@@ -1,4 +1,4 @@
-"""Manhwa Translator — запуск.
+"""agolate — запуск.
 
     python main.py                         — обычный запуск с окном
     python main.py --image page.png        — перевести картинку без окна (для проверки)

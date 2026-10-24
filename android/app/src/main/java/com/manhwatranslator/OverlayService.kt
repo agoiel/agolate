@@ -141,7 +141,7 @@ class OverlayService : Service() {
         val notif = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(Brand.TEAL)
-            .setContentTitle("Переводчик активен")
+            .setContentTitle("agolate работает")
             .setContentText("Нажмите на кнопку «Аа», чтобы перевести область")
             .setOngoing(true)
             .setContentIntent(openPi)

@@ -35,9 +35,9 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/*.apk out/ManhwaTranslator.apk
+          cp app/build/outputs/apk/release/*.apk out/agolate.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ManhwaTranslator-apk
-          path: android/out/ManhwaTranslator.apk
+          name: agolate-apk
+          path: android/out/agolate.apk

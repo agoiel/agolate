@@ -69,7 +69,7 @@ class ControlPanel(QWidget):
         self._hotkeys = None
         self._jobs: set[_Job] = set()
 
-        self.setWindowTitle(f"Manhwa Translator {__version__}")
+        self.setWindowTitle(f"agolate {__version__}")
         self._build_ui()
 
         self.auto_timer = QTimer(self)
@@ -267,7 +267,7 @@ class ControlPanel(QWidget):
             return
         if result.error:
             if "\n" in result.error:
-                QMessageBox.warning(self, "Manhwa Translator", result.error)
+                QMessageBox.warning(self, "agolate", result.error)
             self._set_status(result.error.split("\n")[0], True)
             return
         n = sum(1 for b in result.bubbles if b.translation)
@@ -492,7 +492,7 @@ def _excepthook(exc_type, exc, tb):
 def run_gui() -> int:
     sys.excepthook = _excepthook
     app = QApplication(sys.argv)
-    app.setApplicationName("Manhwa Translator")
+    app.setApplicationName("agolate")
     app.setQuitOnLastWindowClosed(False)
     cfg = Config()
     panel = ControlPanel(cfg)

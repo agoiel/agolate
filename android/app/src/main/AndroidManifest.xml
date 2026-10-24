@@ -8,9 +8,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="Manhwa Translator"
+        android:label="agolate"
         android:supportsRtl="true"
         android:theme="@style/Theme.Manhwa">
 
@@ -27,7 +27,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Скриншот → «Поделиться» → Manhwa Translator -->
+            <!-- Скриншот → «Поделиться» → agolate -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

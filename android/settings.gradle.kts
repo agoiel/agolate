@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ManhwaTranslator"
+rootProject.name = "agolate"
 include(":app")

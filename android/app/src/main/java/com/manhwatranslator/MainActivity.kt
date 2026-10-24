@@ -84,7 +84,7 @@ class MainActivity : Activity() {
         content.addView(buildTranslator(), lp().margins(this, top = 14))
         content.addView(buildGlossary(), lp().margins(this, top = 14))
         content.addView(buildTuning(), lp().margins(this, top = 14))
-        content.addView(ui.caption("Manhwa Translator 0.1 · распознавание: Google ML Kit").apply {
+        content.addView(ui.caption("agolate 0.1 · распознавание: Google ML Kit").apply {
             gravity = Gravity.CENTER
             alpha = 0.8f
         }, lp().margins(this, top = 22))
@@ -140,7 +140,7 @@ class MainActivity : Activity() {
         }
         brandRow.addView(logo, LinearLayout.LayoutParams(dp(46), dp(46)))
         val titles = ui.vertical()
-        titles.addView(ui.text("Manhwa Translator", 22f, android.graphics.Color.WHITE, Fonts.medium))
+        titles.addView(ui.text("agolate", 24f, android.graphics.Color.WHITE, Fonts.medium))
         titles.addView(ui.text("Перевод манхвы прямо с экрана", 13.5f, Brand.ICE))
         brandRow.addView(titles, lp(0, weight = 1f).margins(this, start = 14))
         heroInner.addView(brandRow)

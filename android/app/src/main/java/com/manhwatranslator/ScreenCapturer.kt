@@ -70,7 +70,7 @@ class ScreenCapturer(
         }, handler)
 
         display = projection.createVirtualDisplay(
-            "manhwa-translator", width, height, density,
+            "agolate", width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.surface, null, handler,
         )
     }
