@@ -1,9 +1,10 @@
 name: Release
 
-# Запускается, когда в репозиторий отправлена метка версии, например v0.1.0
+# Запускается, когда на GitHub публикуется релиз (Releases → Draft a new release).
+# Собирает APK и exe и прикрепляет их к этому релизу.
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -84,7 +85,8 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: agolate ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
+          name: agolate ${{ github.event.release.tag_name }}
           files: files/*
           body: |
             Переводчик манхвы, манги и маньхуа прямо с экрана.
