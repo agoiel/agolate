@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Палитра -->
+    <color name="deep">#003B46</color>
+    <color name="teal">#07575B</color>
+    <color name="mist">#66A5AD</color>
+    <color name="ice">#C4DFE6</color>
+
+    <color name="ic_launcher_background">#07575B</color>
+    <color name="window_bg">#EAF3F5</color>
+    <color name="accent">#07575B</color>
+</resources>

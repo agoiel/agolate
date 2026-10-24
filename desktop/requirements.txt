@@ -1,0 +1,18 @@
+PySide6>=6.6
+numpy>=1.24
+Pillow>=10.0
+requests>=2.31
+pynput>=1.7.6
+
+# Windows OCR (встроенный в Windows 10/11)
+winrt-runtime; sys_platform == "win32"
+winrt-Windows.Foundation; sys_platform == "win32"
+winrt-Windows.Foundation.Collections; sys_platform == "win32"
+winrt-Windows.Globalization; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging; sys_platform == "win32"
+winrt-Windows.Media.Ocr; sys_platform == "win32"
+winrt-Windows.Security.Cryptography; sys_platform == "win32"
+winrt-Windows.Storage.Streams; sys_platform == "win32"
+
+# EasyOCR (запасной движок, тяжёлый ~1–2 ГБ) — ставится отдельно:
+#   .venv\Scripts\python -m pip install easyocr

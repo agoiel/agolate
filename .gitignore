@@ -1,5 +1,16 @@
-# Object file
-*.o
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
 
-# Ada Library Information
-*.ali
+# ПК-версия
+desktop/.venv/
+desktop/build/
+desktop/dist/
+desktop/config.json
+desktop/error.log
+desktop/*.spec
+__pycache__/
