@@ -66,6 +66,7 @@ class Pipeline(private val ctx: Context) {
 
     private fun translateBubbles(bubbles: List<Bubble>, s: Settings, src: SourceLang, tgt: TargetLang) {
         val texts = bubbles.map { it.text }
+        RateLimit.intervalMs = (s.requestIntervalSec.coerceIn(0f, 30f) * 1000).toLong()
         val tr = Translators.create(s)
         val glossary = s.glossary.takeIf { it.isNotBlank() }?.let { GlossaryStore.load(ctx, it) }
         val found = glossary?.find(texts) ?: emptyList()

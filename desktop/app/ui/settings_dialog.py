@@ -129,6 +129,8 @@ class SettingsDialog(QDialog):
         f = QFormLayout()
         self.translator = _combo([(k, cls.title) for k, cls in TRANSLATORS.items()], c["translator"])
         self.ctx = _spin(c["context_size"], 0, 40)
+        self.interval = _dspin(c.get("request_interval", 1.0), 0.0, 10.0, 0.5)
+        self.interval.setSuffix(" с")
         self.glossary = QComboBox()
         self._fill_glossaries(c.get("glossary", ""))
         g_edit = QPushButton("Изменить…")
@@ -144,6 +146,7 @@ class SettingsDialog(QDialog):
         grow.addWidget(g_dir)
         f.addRow("Переводчик:", self.translator)
         f.addRow("Реплик контекста:", self.ctx)
+        f.addRow("Пауза между запросами:", self.interval)
         f.addRow("Глоссарий тайтла:", grow)
         lay.addLayout(f)
 
@@ -230,6 +233,7 @@ class SettingsDialog(QDialog):
 
         c["translator"] = self.translator.currentData()
         c["context_size"] = self.ctx.value()
+        c["request_interval"] = self.interval.value()
         c["glossary"] = self.glossary.currentData() or ""
         t = c["translators"]
         t["deepl"]["api_key"] = self.deepl_key.text().strip()

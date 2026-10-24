@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import TranslateError, TranslateRequest, Translator
+from .base import RateLimit, TranslateError, TranslateRequest, Translator
 from .llm import GeminiTranslator, OpenAICompatTranslator
 from .machine import DeepLTranslator, GoogleFreeTranslator, MicrosoftTranslator
 
@@ -18,4 +18,4 @@ def create_translator(name: str, cfg) -> Translator:
     return cls(cfg.translator_settings(cls.name))
 
 
-__all__ = ["TRANSLATORS", "TranslateError", "TranslateRequest", "Translator", "create_translator"]
+__all__ = ["TRANSLATORS", "RateLimit", "TranslateError", "TranslateRequest", "Translator", "create_translator"]

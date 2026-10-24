@@ -5,11 +5,8 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.util.concurrent.Callable
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
-class TranslateException(message: String) : Exception(message)
+class TranslateException(message: String, val code: Int = 0) : Exception(message)
 
 class TranslateRequest(
     val texts: List<String>,
@@ -29,9 +26,37 @@ interface Translator {
 
 // ==================================================================== HTTP
 
+/**
+ * Ограничитель частоты: между двумя запросами к сервису перевода проходит
+ * не меньше заданной паузы. Запросы идут строго по очереди.
+ */
+object RateLimit {
+    @Volatile var intervalMs: Long = 1000
+    private var last = 0L
+
+    @Synchronized
+    fun await() {
+        val wait = last + intervalMs - System.currentTimeMillis()
+        if (wait > 0) Thread.sleep(wait)
+        last = System.currentTimeMillis()
+    }
+}
+
 internal object Http {
     fun call(url: String, method: String = "GET", headers: Map<String, String> = emptyMap(),
              body: String? = null, title: String): String {
+        try {
+            return once(url, method, headers, body, title)
+        } catch (e: TranslateException) {
+            if (e.code != 429) throw e
+            // Сервис попросил притормозить: ждём и пробуем ещё раз
+            Thread.sleep(maxOf(3000L, RateLimit.intervalMs * 2))
+            return once(url, method, headers, body, title)
+        }
+    }
+
+    private fun once(url: String, method: String, headers: Map<String, String>, body: String?, title: String): String {
+        RateLimit.await()
         val conn = try {
             URL(url).openConnection() as HttpURLConnection
         } catch (e: Exception) {
@@ -58,7 +83,9 @@ internal object Http {
                     456 -> "закончился месячный лимит символов"
                     else -> ""
                 }
-                throw TranslateException("$title: ошибка $code $hint\n${text.take(300)}".trim())
+                // HTML-страницы ошибок не показываем — в них нет ничего полезного
+                val details = if (text.trimStart().startsWith("<")) "" else text.take(200)
+                throw TranslateException("$title: ошибка $code — $hint\n$details".trim(), code)
             }
             return text
         } catch (e: TranslateException) {
@@ -75,21 +102,32 @@ internal object Http {
 
 // ==================================================================== обычные переводчики
 
-/** Бесплатный веб-эндпоинт Google без ключа. Неофициальный — может быть ограничен. */
+/**
+ * Бесплатный веб-эндпоинт Google без ключа. Неофициальный — может быть ограничен.
+ * Все облака страницы уходят одним запросом (через перевод строки), а не по одному.
+ */
 class GoogleFreeTranslator : Translator {
     override val title = "Google (без ключа)"
-    private val pool = Executors.newFixedThreadPool(4)
 
-    private fun one(text: String, sl: String, tl: String): String {
+    private fun request(text: String, sl: String, tl: String): String {
         val url = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t" +
             "&sl=${Http.enc(sl)}&tl=${Http.enc(tl)}&q=${Http.enc(text)}"
-        val raw = Http.call(url, title = title)
+        val raw = try {
+            Http.call(url, title = title)
+        } catch (e: TranslateException) {
+            if (e.code == 429) {
+                throw TranslateException("Google временно ограничил бесплатные запросы с вашего адреса. " +
+                    "Чаще всего так бывает при включённом VPN. Отключите VPN, подождите несколько минут " +
+                    "или выберите другой переводчик (DeepL, Gemini).", 429)
+            }
+            throw e
+        }
         return try {
             val segs = JSONArray(raw).getJSONArray(0)
             buildString {
                 for (i in 0 until segs.length()) {
-                    val s = segs.optJSONArray(i) ?: continue
-                    if (!s.isNull(0)) append(s.optString(0))
+                    val seg = segs.optJSONArray(i) ?: continue
+                    if (!seg.isNull(0)) append(seg.optString(0))
                 }
             }
         } catch (e: Exception) {
@@ -98,15 +136,33 @@ class GoogleFreeTranslator : Translator {
     }
 
     override fun translate(req: TranslateRequest): List<String> {
-        val texts = req.anchored ?: req.texts
-        val futures = texts.map { t -> pool.submit(Callable { one(t, req.src.google, req.tgt.google) }) }
-        return futures.map {
-            try {
-                it.get(60, TimeUnit.SECONDS)
-            } catch (e: java.util.concurrent.ExecutionException) {
-                throw (e.cause as? TranslateException) ?: TranslateException("Google: ошибка")
+        val texts = (req.anchored ?: req.texts).map { it.replace('\n', ' ') }
+        val sl = req.src.google
+        val tl = req.tgt.google
+        // Делим на порции, чтобы адрес запроса не получился слишком длинным
+        val chunks = ArrayList<MutableList<Int>>()
+        var size = 0
+        for (i in texts.indices) {
+            val len = Http.enc(texts[i]).length + 3
+            if (chunks.isEmpty() || size + len > 5000) {
+                chunks.add(mutableListOf())
+                size = 0
+            }
+            chunks.last().add(i)
+            size += len
+        }
+        val out = arrayOfNulls<String>(texts.size)
+        for (chunk in chunks) {
+            val joined = chunk.joinToString("\n") { texts[it] }
+            val parts = request(joined, sl, tl).split("\n").map { it.trim() }
+            if (parts.size == chunk.size) {
+                chunk.forEachIndexed { k, idx -> out[idx] = parts[k] }
+            } else {
+                // Google склеил строки — переводим эту порцию по одной
+                for (idx in chunk) out[idx] = request(texts[idx], sl, tl).trim()
             }
         }
+        return out.map { it.orEmpty() }
     }
 }
 

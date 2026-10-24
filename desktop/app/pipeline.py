@@ -21,7 +21,7 @@ from .config import GLOSSARY_DIR, Config
 from .glossary import Glossary
 from .models import PageResult
 from .ocr import OcrBackend, OcrError, OcrLanguageMissing, create_ocr
-from .translators import TranslateError, TranslateRequest, Translator, create_translator
+from .translators import RateLimit, TranslateError, TranslateRequest, Translator, create_translator
 
 
 def _norm(text: str) -> str:
@@ -144,6 +144,7 @@ class Pipeline:
         cfg = self.cfg
         texts = [b.text for b in bubbles]
         glossary = self._load_glossary()
+        RateLimit.interval = max(0.0, float(cfg.get("request_interval", 1.0)))
         tr = self.translator
 
         n_ctx = int(cfg["context_size"])

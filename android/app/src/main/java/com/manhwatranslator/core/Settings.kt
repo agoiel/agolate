@@ -12,6 +12,8 @@ class Settings(ctx: Context) {
     var targetLang by str("target_lang", "ru")
     var translator by str("translator", "google_free")
     var contextSize by int("context_size", 12)
+    /** Минимальная пауза между запросами к сервису перевода, секунды */
+    var requestIntervalSec by float("request_interval", 1f)
     var glossary by str("glossary", "")
 
     var deeplKey by str("deepl_key", "")

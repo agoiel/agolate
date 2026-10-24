@@ -243,6 +243,9 @@ class MainActivity : Activity() {
         card.addView(View(this).apply { setBackgroundColor(T.c.border) }, lp(h = dp(1)).margins(this, top = 16))
         card.addView(Stepper(this, "Контекст", "Сколько прошлых реплик учитывать", s.contextSize.toFloat(),
             1f, 0f, 40f, { it.toInt().toString() }) { s.contextSize = it.toInt() }, lp().margins(this, top = 12))
+        card.addView(Stepper(this, "Пауза между запросами", "Защищает от блокировки за частые запросы",
+            s.requestIntervalSec, 0.5f, 0f, 10f, { String.format("%.1f с", it) }) { s.requestIntervalSec = it },
+            lp().margins(this, top = 12))
         selectTranslator(s.translator)
         return card
     }
@@ -458,7 +461,7 @@ class MainActivity : Activity() {
                 } else {
                     val soft = if (bmp.config == Bitmap.Config.ARGB_8888) bmp else bmp.copy(Bitmap.Config.ARGB_8888, false)
                     val p = testPipeline ?: Pipeline(this).also { testPipeline = it }
-                    p.process(soft, s)
+                    p.process(cropStatusBar(soft), s)
                 }
             } catch (e: Exception) {
                 PageResult(error = "Ошибка: ${e.message}")
@@ -468,6 +471,17 @@ class MainActivity : Activity() {
                 Dialogs.result(this, res)
             }
         }
+    }
+
+    /** Если это скриншот всего экрана — отрезаем строку состояния (часы, значки, заряд). */
+    private fun cropStatusBar(bmp: Bitmap): Bitmap {
+        val screenW = resources.displayMetrics.widthPixels
+        val looksLikeScreenshot = kotlin.math.abs(bmp.width - screenW) <= 4 && bmp.height > bmp.width
+        if (!looksLikeScreenshot) return bmp
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        val barH = if (id > 0) resources.getDimensionPixelSize(id) else dp(28)
+        if (barH <= 0 || barH >= bmp.height / 4) return bmp
+        return Bitmap.createBitmap(bmp, 0, barH, bmp.width, bmp.height - barH)
     }
 
     private fun resetSession() {

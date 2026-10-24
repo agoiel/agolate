@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass, field
 
 import requests
@@ -11,6 +13,26 @@ TIMEOUT = 30
 
 class TranslateError(RuntimeError):
     """Ошибка перевода с понятным текстом."""
+
+    def __init__(self, message: str, code: int = 0):
+        super().__init__(message)
+        self.code = code
+
+
+class RateLimit:
+    """Между двумя запросами к сервису перевода проходит не меньше заданной паузы."""
+
+    interval = 1.0
+    _last = 0.0
+    _lock = threading.Lock()
+
+    @classmethod
+    def wait(cls) -> None:
+        with cls._lock:
+            delay = cls._last + cls.interval - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            cls._last = time.monotonic()
 
 
 @dataclass
@@ -37,20 +59,25 @@ class Translator:
 
     # ---------------------------------------------------------------- утилиты
     def _post(self, url: str, **kw) -> requests.Response:
-        try:
-            r = self.http.post(url, timeout=TIMEOUT, **kw)
-        except requests.RequestException as e:
-            raise TranslateError(f"{self.title}: нет связи ({e.__class__.__name__}).") from e
-        self._check(r)
-        return r
+        return self._request("post", url, **kw)
 
     def _get(self, url: str, **kw) -> requests.Response:
-        try:
-            r = self.http.get(url, timeout=TIMEOUT, **kw)
-        except requests.RequestException as e:
-            raise TranslateError(f"{self.title}: нет связи ({e.__class__.__name__}).") from e
-        self._check(r)
-        return r
+        return self._request("get", url, **kw)
+
+    def _request(self, method: str, url: str, **kw) -> requests.Response:
+        for attempt in (1, 2):
+            RateLimit.wait()
+            try:
+                r = self.http.request(method, url, timeout=TIMEOUT, **kw)
+            except requests.RequestException as e:
+                raise TranslateError(f"{self.title}: нет связи ({e.__class__.__name__}).") from e
+            if r.status_code == 429 and attempt == 1:
+                # Сервис попросил притормозить: ждём и пробуем ещё раз
+                time.sleep(max(3.0, RateLimit.interval * 2))
+                continue
+            self._check(r)
+            return r
+        raise AssertionError("unreachable")
 
     def _check(self, r: requests.Response) -> None:
         if r.status_code < 400:
@@ -61,5 +88,7 @@ class Translator:
             429: "слишком много запросов или закончился лимит",
             456: "закончился месячный лимит символов",
         }.get(r.status_code, "")
-        body = r.text[:300].replace("\n", " ")
-        raise TranslateError(f"{self.title}: ошибка {r.status_code} {hint}\n{body}".strip())
+        text = r.text.lstrip()
+        # HTML-страницы ошибок не показываем — в них нет ничего полезного
+        body = "" if text.startswith("<") else text[:200].replace("\n", " ")
+        raise TranslateError(f"{self.title}: ошибка {r.status_code} — {hint}\n{body}".strip(), r.status_code)

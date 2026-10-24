@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
 
 from .. import languages
 from .base import TranslateError, TranslateRequest, Translator
@@ -12,7 +12,8 @@ class GoogleFreeTranslator(Translator):
     """Бесплатный веб-эндпоинт Google Translate.
 
     Ключ не нужен, удобно для начала. Это неофициальный способ: Google может
-    ограничить его без предупреждения — тогда переключитесь на DeepL или Microsoft.
+    ограничить его без предупреждения (особенно при VPN) — тогда переключитесь
+    на DeepL или Microsoft. Все облака страницы уходят одним запросом.
     """
 
     name = "google_free"
@@ -20,7 +21,15 @@ class GoogleFreeTranslator(Translator):
     URL = "https://translate.googleapis.com/translate_a/single"
 
     def _one(self, text: str, sl: str, tl: str) -> str:
-        r = self._get(self.URL, params={"client": "gtx", "sl": sl, "tl": tl, "dt": "t", "q": text})
+        try:
+            r = self._get(self.URL, params={"client": "gtx", "sl": sl, "tl": tl, "dt": "t", "q": text})
+        except TranslateError as e:
+            if e.code == 429:
+                raise TranslateError(
+                    "Google временно ограничил бесплатные запросы с вашего адреса. Чаще всего так бывает "
+                    "при включённом VPN. Отключите VPN, подождите несколько минут или выберите другой "
+                    "переводчик (DeepL, Gemini).", 429) from e
+            raise
         try:
             data = r.json()
             return "".join(seg[0] for seg in data[0] if seg and seg[0])
@@ -28,10 +37,29 @@ class GoogleFreeTranslator(Translator):
             raise TranslateError("Google: неожиданный ответ сервера.") from e
 
     def translate(self, req: TranslateRequest) -> list[str]:
-        texts = req.anchored or req.texts
+        texts = [t.replace("\n", " ") for t in (req.anchored or req.texts)]
         sl, tl = languages.src(req.src)["google"], languages.tgt(req.tgt)["google"]
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            return list(pool.map(lambda t: self._one(t, sl, tl), texts))
+        # делим на порции, чтобы адрес запроса не был слишком длинным
+        chunks: list[list[int]] = []
+        size = 0
+        for i, t in enumerate(texts):
+            n = len(quote(t)) + 3
+            if not chunks or size + n > 5000:
+                chunks.append([])
+                size = 0
+            chunks[-1].append(i)
+            size += n
+        out = [""] * len(texts)
+        for chunk in chunks:
+            parts = [p.strip() for p in self._one("\n".join(texts[i] for i in chunk), sl, tl).split("\n")]
+            if len(parts) == len(chunk):
+                for i, p in zip(chunk, parts):
+                    out[i] = p
+            else:
+                # Google склеил строки — переводим эту порцию по одной
+                for i in chunk:
+                    out[i] = self._one(texts[i], sl, tl).strip()
+        return out
 
 
 class DeepLTranslator(Translator):

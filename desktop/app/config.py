@@ -35,6 +35,7 @@ DEFAULTS: dict = {
     # --- Перевод ---
     "translator": "google_free",      # google_free | deepl | microsoft | gemini | openai
     "context_size": 12,               # сколько прошлых реплик передавать как контекст
+    "request_interval": 1.0,          # мин. пауза между запросами к переводчику, секунды
     "glossary": "",                   # имя файла глоссария в папке glossaries (пусто — без глоссария)
     "translators": {
         "deepl": {"api_key": ""},
