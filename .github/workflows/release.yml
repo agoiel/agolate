@@ -1,0 +1,102 @@
+name: Release
+
+# Запускается, когда в репозиторий отправлена метка версии, например v0.1.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build APK
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          gradle assembleRelease --stacktrace --no-daemon
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/agolate.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agolate-android
+          path: android/out/agolate.apk
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build exe
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name agolate `
+            --collect-all winrt `
+            --hidden-import pynput.keyboard._win32 --hidden-import pynput.mouse._win32 `
+            --exclude-module torch --exclude-module torchvision --exclude-module easyocr `
+            main.py
+          Copy-Item -Recurse glossaries dist/agolate/glossaries
+          Compress-Archive -Path dist/agolate -DestinationPath agolate-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agolate-windows
+          path: desktop/agolate-windows.zip
+
+  release:
+    needs: [android, windows]
+    # Релиз выходит, даже если сборка для Windows не удалась
+    if: always() && needs.android.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: agolate ${{ github.ref_name }}
+          files: files/*
+          body: |
+            Переводчик манхвы, манги и маньхуа прямо с экрана.
+
+            ## Android
+            Скачайте **agolate.apk**, откройте его на телефоне и разрешите установку из этого источника.
+            Если Play Защита предупредит о неизвестном приложении, нажмите «Подробнее» → «Всё равно установить».
+            Нужны Android 8.0 или новее и сервисы Google Play.
+
+            ## Windows
+            Скачайте **agolate-windows.zip**, распакуйте и запустите `agolate.exe`. Python не нужен.
+            Если Windows покажет «Система Windows защитила ваш компьютер», нажмите «Подробнее» → «Выполнить в любом случае».
+            Нужна Windows 10 или 11.
+
+            Инструкция и описание возможностей — в [README](https://github.com/agoiel/agolate#readme).
