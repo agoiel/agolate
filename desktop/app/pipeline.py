@@ -20,7 +20,7 @@ from .bubbles import group_lines
 from .config import GLOSSARY_DIR, Config
 from .glossary import Glossary
 from .models import PageResult
-from .ocr import OcrBackend, OcrError, OcrLanguageMissing, create_ocr
+from .ocr import OcrBackend, OcrError, OcrLanguageMissing, create_ocr, enhance
 from .translators import RateLimit, TranslateError, TranslateRequest, Translator, create_translator
 
 
@@ -91,7 +91,8 @@ class Pipeline:
         t0 = time.perf_counter()
 
         try:
-            lines = self.ocr.recognize(image, lang)
+            mode = cfg.get("ocr_mode", "thorough")
+            lines = enhance.merge([self.ocr.recognize(v, lang) for v in enhance.variants(image, mode)])
         except OcrLanguageMissing as e:
             result.error = str(e)
             result.missing_ocr_lang = e.lang

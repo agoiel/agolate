@@ -28,8 +28,23 @@ class Ocr {
         }
     }
 
-    /** Вызывать из фонового потока. */
-    fun recognize(bitmap: Bitmap, lang: SourceLang): List<TextLine> {
+    /**
+     * Распознавание в несколько проходов (см. [Enhance]). Координаты строк — в пикселях
+     * исходной картинки. Вызывать из фонового потока.
+     */
+    fun recognize(bitmap: Bitmap, lang: SourceLang, mode: Int): List<TextLine> {
+        val k = Enhance.scaleFor(bitmap.width, bitmap.height)
+        val big = Enhance.scaled(bitmap, k)
+        val passes = Enhance.variants(big, mode).map { v ->
+            val lines = recognizeOnce(v, lang)
+            if (v !== big) v.recycle()
+            lines.map { l -> TextLine(Box(l.box.x / k, l.box.y / k, l.box.w / k, l.box.h / k), l.text) }
+        }
+        if (big !== bitmap) big.recycle()
+        return Enhance.merge(passes)
+    }
+
+    private fun recognizeOnce(bitmap: Bitmap, lang: SourceLang): List<TextLine> {
         val result = try {
             Tasks.await(client(lang.script).process(InputImage.fromBitmap(bitmap, 0)), 60, TimeUnit.SECONDS)
         } catch (e: ExecutionException) {

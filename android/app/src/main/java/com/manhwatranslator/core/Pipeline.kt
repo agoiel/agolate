@@ -28,7 +28,7 @@ class Pipeline(private val ctx: Context) {
         val t0 = System.currentTimeMillis()
 
         val lines = try {
-            ocr.recognize(bitmap, src)
+            ocr.recognize(bitmap, src, s.ocrMode)
         } catch (e: OcrException) {
             return PageResult(error = e.message ?: "Ошибка распознавания")
         }

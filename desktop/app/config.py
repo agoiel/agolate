@@ -21,6 +21,7 @@ DEFAULTS: dict = {
 
     # --- Распознавание ---
     "ocr_engine": "windows",          # windows | easyocr
+    "ocr_mode": "thorough",           # fast | thorough | max — сколько проходов распознавания
     "ocr_upscale": 1.5,               # увеличение картинки перед OCR (мелкий текст читается лучше)
     "ocr_min_conf": 0.3,              # строки с меньшей уверенностью отбрасываются (только EasyOCR)
     "easyocr_gpu": False,

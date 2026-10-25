@@ -33,6 +33,8 @@ class Settings(ctx: Context) {
     var claudeModel by str("claude_model", "claude-haiku-5-5")
 
     var bubbleGap by float("bubble_gap", 1.1f)
+    /** Сколько проходов распознавания: 1 — быстрый, 2 — тщательный, 3 — максимальный */
+    var ocrMode by int("ocr_mode", Enhance.THOROUGH)
     var skipFreeText by bool("skip_free", false)
     var skipCut by bool("skip_cut", true)
     var maxFontSp by int("max_font_sp", 16)

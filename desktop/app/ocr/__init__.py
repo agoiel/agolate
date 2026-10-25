@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from . import enhance
 from .base import OcrBackend, OcrError, OcrLanguageMissing
 
 
@@ -13,4 +14,4 @@ def create_ocr(name: str, cfg) -> OcrBackend:
     return WindowsOcrBackend(cfg)
 
 
-__all__ = ["OcrBackend", "OcrError", "OcrLanguageMissing", "create_ocr"]
+__all__ = ["enhance", "OcrBackend", "OcrError", "OcrLanguageMissing", "create_ocr"]

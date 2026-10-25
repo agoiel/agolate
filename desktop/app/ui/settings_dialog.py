@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
 from .. import languages
 from ..config import GLOSSARY_DIR, Config
 from ..glossary import list_glossaries
+from ..ocr import enhance
 from ..translators import TRANSLATORS
 from .glossary_editor import GlossaryEditor, new_glossary_file
 
@@ -94,6 +95,7 @@ class SettingsDialog(QDialog):
         f = QFormLayout(w)
         self.ocr = _combo([("windows", "Windows OCR (быстрый, встроенный)"),
                            ("easyocr", "EasyOCR (тяжёлый, нужен pip install easyocr)")], c["ocr_engine"])
+        self.ocr_mode = _combo(list(enhance.MODES.items()), c.get("ocr_mode", "thorough"))
         self.upscale = _dspin(c["ocr_upscale"], 1.0, 4.0, 0.25)
         self.min_conf = _dspin(c["ocr_min_conf"], 0.0, 1.0, 0.05)
         self.gpu = QCheckBox("Использовать видеокарту (EasyOCR)")
@@ -107,6 +109,7 @@ class SettingsDialog(QDialog):
         self.skip_cut = QCheckBox("Не переводить текст, обрезанный краем области")
         self.skip_cut.setChecked(bool(c["skip_cut_bubbles"]))
         f.addRow("Движок OCR:", self.ocr)
+        f.addRow("Режим распознавания:", self.ocr_mode)
         f.addRow("Увеличение перед OCR:", self.upscale)
         f.addRow("Мин. уверенность (EasyOCR):", self.min_conf)
         f.addRow("", self.gpu)
@@ -235,6 +238,7 @@ class SettingsDialog(QDialog):
         c["auto_interval_ms"] = self.auto_ms.value()
 
         c["ocr_engine"] = self.ocr.currentData()
+        c["ocr_mode"] = self.ocr_mode.currentData()
         c["ocr_upscale"] = self.upscale.value()
         c["ocr_min_conf"] = self.min_conf.value()
         c["easyocr_gpu"] = self.gpu.isChecked()

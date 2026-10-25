@@ -23,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.manhwatranslator.core.Enhance
 import com.manhwatranslator.core.GlossaryStore
 import com.manhwatranslator.core.Languages
 import com.manhwatranslator.core.PageResult
@@ -381,6 +382,13 @@ class MainActivity : Activity() {
         card.addView(header)
 
         val body = ui.vertical().apply { visibility = View.GONE }
+        val modes = Dropdown(this, "РАСПОЗНАВАНИЕ ТЕКСТА", Enhance.modes.map {
+            Dropdown.Item(it.first.toString(), it.second, it.third, "")
+        }) { s.ocrMode = it.toInt() }
+        modes.select(s.ocrMode.toString())
+        body.addView(modes, lp().margins(this, top = 16))
+        body.addView(ui.caption("Если текст на тёмном или пёстром фоне не находится, выберите режим потщательнее. " +
+            "Каждый проход добавляет примерно 0,2–0,4 с."), lp().margins(this, top = 6))
         body.addView(Stepper(this, "Склейка строк", "Больше — охотнее собирает строки в одно облако",
             s.bubbleGap, 0.1f, 0.2f, 4f, { String.format("%.1f", it) }) { s.bubbleGap = it },
             lp().margins(this, top = 16))
