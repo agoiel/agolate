@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from .base import RateLimit, TranslateError, TranslateRequest, Translator
-from .llm import GeminiTranslator, OpenAICompatTranslator
-from .machine import DeepLTranslator, GoogleFreeTranslator, MicrosoftTranslator
+from .llm import ClaudeTranslator, GeminiTranslator, OpenAICompatTranslator
+from .machine import (DeepLTranslator, DuckDuckGoTranslator, GoogleFreeTranslator, LingvaTranslator,
+                      MicrosoftTranslator, PapagoTranslator, YandexTranslator)
 
 TRANSLATORS: dict[str, type[Translator]] = {
     cls.name: cls
-    for cls in (GoogleFreeTranslator, DeepLTranslator, MicrosoftTranslator,
-                GeminiTranslator, OpenAICompatTranslator)
+    for cls in (GoogleFreeTranslator, YandexTranslator, DuckDuckGoTranslator, LingvaTranslator,
+                DeepLTranslator, MicrosoftTranslator, PapagoTranslator,
+                GeminiTranslator, ClaudeTranslator, OpenAICompatTranslator)
 }
 
 

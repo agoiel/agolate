@@ -44,11 +44,11 @@ class GlossaryActivity : Activity() {
         val page = ui.vertical().apply { setBackgroundColor(c.bg) }
 
         // ---- верхняя панель
-        val bar = ui.horizontal().apply { setBackgroundColor(Brand.DEEP) }
+        val bar = ui.horizontal().apply { setBackgroundColor(Brand.INK) }
         val back = FrameLayout(this).apply {
             isClickable = true
             background = pressable(null, dpF(20f), android.graphics.Color.argb(60, 255, 255, 255))
-            addView(ImageView(this@GlossaryActivity).apply { setImageDrawable(tinted(R.drawable.ic_back, Brand.ICE)) },
+            addView(ImageView(this@GlossaryActivity).apply { setImageDrawable(tinted(R.drawable.ic_back, Brand.CREAM)) },
                 FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
             setOnClickListener { finish() }
         }
@@ -56,7 +56,7 @@ class GlossaryActivity : Activity() {
         val titles = ui.vertical()
         titles.addView(ui.text(if (file == null) "Новый глоссарий" else "Глоссарий", 19f,
             android.graphics.Color.WHITE, Fonts.medium))
-        titles.addView(ui.text("Имена и термины тайтла", 12.5f, Brand.ICE))
+        titles.addView(ui.text("Имена и термины тайтла", 12.5f, Brand.CREAM))
         bar.addView(titles, lp(0, weight = 1f).margins(this, start = 8))
         page.addView(bar)
 

@@ -130,3 +130,27 @@ class OpenAICompatTranslator(Translator):
         except (KeyError, IndexError, ValueError) as e:
             raise TranslateError("Сервер вернул неожиданный ответ.") from e
         return parse_translations(raw, len(req.texts))
+
+
+class ClaudeTranslator(Translator):
+    """Claude (Anthropic API)."""
+
+    name = "claude"
+    title = "Claude"
+    uses_llm = True
+
+    def translate(self, req: TranslateRequest) -> list[str]:
+        key = self.settings.get("api_key", "").strip()
+        if not key:
+            raise TranslateError("Claude: укажите API-ключ в настройках (platform.claude.com).")
+        model = (self.settings.get("model") or "claude-haiku-5-5").strip()
+        system, user = build_messages(req)
+        r = self._post("https://api.anthropic.com/v1/messages",
+                       headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                       json={"model": model, "max_tokens": 4096, "temperature": 0.3, "system": system,
+                             "messages": [{"role": "user", "content": user}]})
+        try:
+            raw = "".join(b.get("text", "") for b in r.json()["content"] if b.get("type") == "text")
+        except (KeyError, ValueError) as e:
+            raise TranslateError("Claude: неожиданный ответ сервера.") from e
+        return parse_translations(raw, len(req.texts))

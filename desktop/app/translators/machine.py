@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import uuid
 from urllib.parse import quote
 
 from .. import languages
@@ -107,3 +109,142 @@ class MicrosoftTranslator(Translator):
         r = self._post(self.URL, params=params, headers=headers,
                        json=[{"Text": t} for t in (req.anchored or req.texts)])
         return [item["translations"][0]["text"] for item in r.json()]
+
+
+def _join_translate(texts: list[str], max_chars: int, one) -> list[str]:
+    """Переводит облака порциями: склеивает через перевод строки и делит ответ обратно."""
+    clean = [t.replace("\n", " ") for t in texts]
+    chunks: list[list[int]] = []
+    size = 0
+    for i, t in enumerate(clean):
+        if not chunks or size + len(t) + 1 > max_chars:
+            chunks.append([])
+            size = 0
+        chunks[-1].append(i)
+        size += len(t) + 1
+    out = [""] * len(clean)
+    for chunk in chunks:
+        parts = [p.strip() for p in one("\n".join(clean[i] for i in chunk)).split("\n") if p.strip()]
+        if len(parts) == len(chunk):
+            for i, part in zip(chunk, parts):
+                out[i] = part
+        else:
+            for i in chunk:
+                out[i] = one(clean[i]).strip()
+    return out
+
+
+def _simple(google_code: str) -> str:
+    return "zh" if google_code in ("zh-CN", "zh-TW") else google_code
+
+
+class YandexTranslator(Translator):
+    """Яндекс: без ключа — неофициальный бесплатный способ, с ключом — Yandex Cloud Translate."""
+
+    name = "yandex"
+    title = "Яндекс"
+
+    def __init__(self, settings: dict):
+        super().__init__(settings)
+        self.ucid = uuid.uuid4().hex
+
+    def translate(self, req: TranslateRequest) -> list[str]:
+        texts = req.anchored or req.texts
+        sl = _simple(languages.src(req.src)["google"])
+        tl = _simple(languages.tgt(req.tgt)["google"])
+        key = self.settings.get("api_key", "").strip()
+        if key:
+            folder = self.settings.get("folder_id", "").strip()
+            if not folder:
+                raise TranslateError("Яндекс: для ключа Yandex Cloud укажите ID каталога.")
+            r = self._post("https://translate.api.cloud.yandex.net/translate/v2/translate",
+                           headers={"Authorization": f"Api-Key {key}"},
+                           json={"folderId": folder, "sourceLanguageCode": sl,
+                                 "targetLanguageCode": tl, "texts": texts})
+            return [t.get("text", "") for t in r.json().get("translations", [])]
+        data = [("text", t.replace("\n", " ")) for t in texts] + [("lang", f"{sl}-{tl}")]
+        r = self._post("https://translate.yandex.net/api/v1/tr.json/translate",
+                       params={"ucid": self.ucid, "srv": "android", "format": "text"}, data=data)
+        try:
+            out = r.json()["text"]
+        except (ValueError, KeyError) as e:
+            raise TranslateError("Яндекс: неожиданный ответ. Бесплатный способ мог перестать работать — "
+                                 "укажите ключ Yandex Cloud или выберите другой переводчик.") from e
+        return [str(x).strip() for x in out] + [""] * (len(texts) - len(out))
+
+
+class DuckDuckGoTranslator(Translator):
+    """Переводчик DuckDuckGo (внутри — Microsoft Bing). Неофициальный, без ключа."""
+
+    name = "duckduckgo"
+    title = "DuckDuckGo"
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+
+    def translate(self, req: TranslateRequest) -> list[str]:
+        page = self._get("https://duckduckgo.com/", params={"q": "translate", "ia": "web"},
+                         headers={"User-Agent": self.UA}).text
+        m = re.search(r"vqd=[\"']?([\d-]+)", page)
+        if not m:
+            raise TranslateError("DuckDuckGo: не удалось начать сессию перевода. Попробуйте позже.")
+        params = {"vqd": m.group(1), "query": "translate",
+                  "from": languages.src(req.src)["microsoft"], "to": languages.tgt(req.tgt)["microsoft"]}
+
+        def one(text: str) -> str:
+            r = self._post("https://duckduckgo.com/translation.js", params=params, data=text.encode("utf-8"),
+                           headers={"Content-Type": "text/plain", "User-Agent": self.UA})
+            try:
+                return r.json()["translated"]
+            except (ValueError, KeyError) as e:
+                raise TranslateError("DuckDuckGo: неожиданный ответ сервера.") from e
+
+        return _join_translate(req.anchored or req.texts, 1500, one)
+
+
+class LingvaTranslator(Translator):
+    """Lingva — открытый посредник к Google Переводчику. Выручает, когда Google ограничивает запросы."""
+
+    name = "lingva"
+    title = "Lingva"
+    CODES = {"zh-CN": "zh", "zh-TW": "zh_HANT"}
+
+    def translate(self, req: TranslateRequest) -> list[str]:
+        base = (self.settings.get("base_url") or "https://lingva.ml").strip().rstrip("/")
+        g_src, g_tgt = languages.src(req.src)["google"], languages.tgt(req.tgt)["google"]
+        sl, tl = self.CODES.get(g_src, g_src), self.CODES.get(g_tgt, g_tgt)
+
+        def one(text: str) -> str:
+            r = self._get(f"{base}/api/v1/{sl}/{tl}/{quote(text, safe='')}")
+            try:
+                data = r.json()
+            except ValueError as e:
+                raise TranslateError("Lingva: сервер ответил не JSON. Попробуйте другой адрес сервера.") from e
+            if "error" in data:
+                raise TranslateError(f"Lingva: {data['error']}")
+            return data.get("translation", "")
+
+        return _join_translate(req.anchored or req.texts, 1500, one)
+
+
+class PapagoTranslator(Translator):
+    """Papago (Naver Cloud) — сильнее всех в корейском. Нужны Client ID и Client Secret."""
+
+    name = "papago"
+    title = "Papago"
+
+    def translate(self, req: TranslateRequest) -> list[str]:
+        cid = self.settings.get("client_id", "").strip()
+        secret = self.settings.get("client_secret", "").strip()
+        if not cid or not secret:
+            raise TranslateError("Papago: укажите Client ID и Client Secret в настройках.")
+        headers = {"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": secret}
+        sl, tl = languages.src(req.src)["google"], languages.tgt(req.tgt)["google"]
+
+        def one(text: str) -> str:
+            r = self._post("https://papago.apigw.ntruss.com/nmt/v1/translation", headers=headers,
+                           json={"source": sl, "target": tl, "text": text})
+            try:
+                return r.json()["message"]["result"]["translatedText"]
+            except (ValueError, KeyError) as e:
+                raise TranslateError("Papago: неожиданный ответ сервера.") from e
+
+        return _join_translate(req.anchored or req.texts, 4500, one)

@@ -47,9 +47,9 @@ class FloatingButton(
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = ctx.dpF(2f)
-        color = Brand.ICE
+        color = Brand.CREAM
     }
-    private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(70, 0, 30, 36) }
+    private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(70, 40, 25, 20) }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
@@ -75,11 +75,11 @@ class FloatingButton(
         // мягкая тень
         c.drawCircle(r, r + context.dpF(1.5f), body + context.dpF(1f), shadow)
         fill.color = when {
-            busy -> Brand.MIST
-            showingTranslation -> Brand.DEEP
-            else -> Brand.TEAL
+            busy -> Brand.SAND
+            showingTranslation -> Brand.BOW
+            else -> Brand.COCOA
         }
-        ring.color = if (showingTranslation) Brand.MIST else Brand.ICE
+        ring.color = Brand.CREAM
         c.drawCircle(r, r, body, fill)
         c.drawCircle(r, r, body, ring)
         val label = when {
@@ -87,7 +87,7 @@ class FloatingButton(
             showingTranslation -> "✕"
             else -> "Аа"
         }
-        text.color = if (busy) Brand.DEEP else Color.WHITE
+        text.color = if (busy) Brand.INK else Color.WHITE
         c.drawText(label, r, r - (text.descent() + text.ascent()) / 2, text)
     }
 
@@ -128,21 +128,21 @@ class RegionSelectView(
     private val onSelected: (Rect) -> Unit,
     private val onCancel: () -> Unit,
 ) : View(ctx) {
-    private val dim = Paint().apply { color = Color.argb(150, 0, 38, 45) }
+    private val dim = Paint().apply { color = Color.argb(150, 33, 24, 22) }
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = ctx.dpF(2f)
-        color = Brand.ICE
+        color = Brand.CREAM
     }
     private val corner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = ctx.dpF(4f)
         strokeCap = Paint.Cap.ROUND
-        color = Brand.MIST
+        color = Brand.SAND
     }
-    private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Brand.DEEP }
+    private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Brand.INK }
     private val hint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Brand.ICE
+        color = Brand.CREAM
         textAlign = Paint.Align.CENTER
         textSize = ctx.dpF(15f)
         typeface = Fonts.medium

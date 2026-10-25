@@ -151,6 +151,13 @@ class SettingsDialog(QDialog):
         lay.addLayout(f)
 
         t = c["translators"]
+        self.ya_key = _key_edit(t["yandex"]["api_key"])
+        self.ya_folder = QLineEdit(t["yandex"]["folder_id"])
+        self.lingva_url = QLineEdit(t["lingva"]["base_url"])
+        self.pp_id = _key_edit(t["papago"]["client_id"])
+        self.pp_secret = _key_edit(t["papago"]["client_secret"])
+        self.cl_key = _key_edit(t["claude"]["api_key"])
+        self.cl_model = QLineEdit(t["claude"]["model"])
         self.deepl_key = _key_edit(t["deepl"]["api_key"])
         self.ms_key = _key_edit(t["microsoft"]["api_key"])
         self.ms_region = QLineEdit(t["microsoft"]["region"])
@@ -161,7 +168,13 @@ class SettingsDialog(QDialog):
         self.oa_model = QLineEdit(t["openai"]["model"])
 
         for title, rows in (
+            ("Яндекс (без ключа; ключ Yandex Cloud — по желанию)",
+             [("Ключ:", self.ya_key), ("ID каталога:", self.ya_folder)]),
+            ("Lingva (без ключа, Google через посредника)", [("Сервер:", self.lingva_url)]),
             ("DeepL (бесплатно 500 тыс. символов/мес.)", [("Ключ:", self.deepl_key)]),
+            ("Papago (Naver Cloud, лучший для корейского)",
+             [("Client ID:", self.pp_id), ("Client Secret:", self.pp_secret)]),
+            ("Claude (ИИ)", [("Ключ:", self.cl_key), ("Модель:", self.cl_model)]),
             ("Microsoft (бесплатно 2 млн символов/мес.)", [("Ключ:", self.ms_key), ("Регион:", self.ms_region)]),
             ("Gemini (ИИ, есть бесплатный лимит)", [("Ключ:", self.gem_key), ("Модель:", self.gem_model)]),
             ("OpenAI-совместимый (OpenAI, OpenRouter, Ollama, LM Studio)",
@@ -236,6 +249,13 @@ class SettingsDialog(QDialog):
         c["request_interval"] = self.interval.value()
         c["glossary"] = self.glossary.currentData() or ""
         t = c["translators"]
+        t["yandex"]["api_key"] = self.ya_key.text().strip()
+        t["yandex"]["folder_id"] = self.ya_folder.text().strip()
+        t["lingva"]["base_url"] = self.lingva_url.text().strip() or "https://lingva.ml"
+        t["papago"]["client_id"] = self.pp_id.text().strip()
+        t["papago"]["client_secret"] = self.pp_secret.text().strip()
+        t["claude"]["api_key"] = self.cl_key.text().strip()
+        t["claude"]["model"] = self.cl_model.text().strip() or "claude-haiku-5-5"
         t["deepl"]["api_key"] = self.deepl_key.text().strip()
         t["microsoft"]["api_key"] = self.ms_key.text().strip()
         t["microsoft"]["region"] = self.ms_region.text().strip() or "global"

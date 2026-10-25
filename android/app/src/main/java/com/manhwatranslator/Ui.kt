@@ -38,28 +38,29 @@ import kotlin.math.roundToInt
 
 // ==================================================================== палитра
 
-/** Четыре цвета бренда. */
+/** Цвета бренда — взяты с иконки приложения. */
 object Brand {
-    val DEEP = Color.parseColor("#003B46")
-    val TEAL = Color.parseColor("#07575B")
-    val MIST = Color.parseColor("#66A5AD")
-    val ICE = Color.parseColor("#C4DFE6")
+    val INK = Color.parseColor("#3D2B28")     // тёмные волосы
+    val COCOA = Color.parseColor("#6B4A33")   // тёплый коричневый
+    val SAND = Color.parseColor("#AC8653")    // фон иконки
+    val CREAM = Color.parseColor("#F3E3CC")   // кожа и страницы книги
+    val BOW = Color.parseColor("#8D2A32")     // бант
 }
 
 /** Цвета интерфейса для светлой и тёмной темы, собранные из палитры бренда. */
 class Palette(val dark: Boolean) {
-    val bg = if (dark) Color.parseColor("#00262D") else Color.parseColor("#EAF3F5")
-    val surface = if (dark) Brand.DEEP else Color.WHITE
-    val surfaceAlt = if (dark) Color.parseColor("#04474F") else Color.parseColor("#F3F9FA")
-    val border = if (dark) Brand.TEAL else Brand.ICE
-    val text = if (dark) Color.parseColor("#E3F1F4") else Brand.DEEP
-    val text2 = if (dark) Color.parseColor("#9CC6CD") else Color.parseColor("#4F7C83")
-    val primary = if (dark) Brand.MIST else Brand.TEAL
-    val onPrimary = if (dark) Brand.DEEP else Color.WHITE
-    val selectedBg = if (dark) Brand.TEAL else Brand.ICE
-    val heroStart = Brand.DEEP
-    val heroEnd = Brand.TEAL
-    val ripple = if (dark) Color.argb(50, 196, 223, 230) else Color.argb(40, 7, 87, 91)
+    val bg = if (dark) Color.parseColor("#211816") else Color.parseColor("#F7EFE4")
+    val surface = if (dark) Color.parseColor("#33241F") else Color.WHITE
+    val surfaceAlt = if (dark) Color.parseColor("#3F2D27") else Color.parseColor("#FBF6EF")
+    val border = if (dark) Color.parseColor("#574036") else Color.parseColor("#EBDCC8")
+    val text = if (dark) Color.parseColor("#F5E9DA") else Brand.INK
+    val text2 = if (dark) Color.parseColor("#C9B29A") else Color.parseColor("#7C6455")
+    val primary = if (dark) Color.parseColor("#D9B27C") else Brand.COCOA
+    val onPrimary = if (dark) Brand.INK else Color.WHITE
+    val selectedBg = if (dark) Color.parseColor("#574036") else Brand.CREAM
+    val heroStart = Brand.INK
+    val heroEnd = Color.parseColor("#7A5638")
+    val ripple = if (dark) Color.argb(50, 243, 227, 204) else Color.argb(40, 107, 74, 51)
 }
 
 object T {
@@ -232,8 +233,8 @@ class PillButton(ctx: Context, text: String, iconRes: Int? = null, style: PillSt
         val r = context.dpF(heightDp / 2f)
         val (bg, fg) = when (style) {
             PillStyle.PRIMARY -> rounded(c.primary, r) to c.onPrimary
-            PillStyle.HERO -> rounded(Brand.ICE, r) to Brand.DEEP
-            PillStyle.HERO_OUTLINE -> rounded(Color.argb(30, 255, 255, 255), r, context.dp(2), Brand.ICE) to Brand.ICE
+            PillStyle.HERO -> rounded(Brand.CREAM, r) to Brand.INK
+            PillStyle.HERO_OUTLINE -> rounded(Color.argb(30, 255, 255, 255), r, context.dp(2), Brand.CREAM) to Brand.CREAM
             PillStyle.OUTLINE -> rounded(Color.TRANSPARENT, r, context.dp(2), c.primary) to c.primary
             PillStyle.TONAL -> rounded(c.selectedBg, r) to c.primary
         }
@@ -494,7 +495,7 @@ class StatusChip(ctx: Context) : LinearLayout(ctx) {
         addView(dot, LayoutParams(ctx.dp(8), ctx.dp(8)).apply { marginEnd = ctx.dp(8) })
         label.textSize = 12.5f
         label.typeface = Fonts.medium
-        label.setTextColor(Brand.ICE)
+        label.setTextColor(Brand.CREAM)
         addView(label)
     }
 
@@ -574,4 +575,113 @@ class HeroDrawable(private val ctx: Context, private val radius: Float) : Drawab
 
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+// ==================================================================== раскрывающийся список
+
+/**
+ * Поле выбора, которое по нажатию плавно раскрывается в список вариантов прямо на экране.
+ * Варианты разбиты на группы (подзаголовки).
+ */
+class Dropdown(ctx: Context, label: String, private val items: List<Item>, private val onSelect: (String) -> Unit) :
+    LinearLayout(ctx) {
+
+    data class Item(val key: String, val title: String, val subtitle: String, val group: String)
+
+    private val header = LinearLayout(ctx)
+    private val titleView = TextView(ctx)
+    private val subtitleView = TextView(ctx)
+    private val chevron = ImageView(ctx)
+    private val list = LinearLayout(ctx)
+    private val rows = LinkedHashMap<String, ChoiceItem>()
+    private var expanded = false
+    private var current = ""
+
+    init {
+        val c = T.c
+        orientation = VERTICAL
+        val r = ctx.dpF(14f)
+
+        header.orientation = HORIZONTAL
+        header.gravity = Gravity.CENTER_VERTICAL
+        header.isClickable = true
+        header.setPadding(ctx.dp(14), ctx.dp(10), ctx.dp(12), ctx.dp(10))
+        val col = LinearLayout(ctx).apply { orientation = VERTICAL }
+        col.addView(TextView(ctx).apply {
+            text = label
+            textSize = 11.5f
+            typeface = Fonts.medium
+            setTextColor(c.text2)
+        })
+        titleView.textSize = 16f
+        titleView.typeface = Fonts.medium
+        titleView.setTextColor(c.text)
+        col.addView(titleView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ctx.dp(2) })
+        subtitleView.textSize = 12.5f
+        subtitleView.setTextColor(c.text2)
+        col.addView(subtitleView)
+        header.addView(col, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        chevron.setImageDrawable(ctx.tinted(R.drawable.ic_chevron, c.primary))
+        header.addView(chevron, LayoutParams(ctx.dp(22), ctx.dp(22)))
+        header.setOnClickListener { toggle() }
+        addView(header, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        list.orientation = VERTICAL
+        list.visibility = GONE
+        list.setPadding(ctx.dp(8), ctx.dp(2), ctx.dp(8), ctx.dp(10))
+        var group = ""
+        for (it in items) {
+            if (it.group != group) {
+                group = it.group
+                list.addView(TextView(ctx).apply {
+                    text = group
+                    textSize = 12f
+                    typeface = Fonts.medium
+                    setTextColor(c.primary)
+                    setPadding(ctx.dp(6), ctx.dp(12), 0, ctx.dp(2))
+                })
+            }
+            val row = ChoiceItem(ctx, it.title, it.subtitle) { choose(it.key) }
+            rows[it.key] = row
+            list.addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ctx.dp(6) })
+        }
+        addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        render()
+        // плавное раскрытие и сворачивание
+        layoutTransition = android.animation.LayoutTransition().apply {
+            enableTransitionType(android.animation.LayoutTransition.CHANGING)
+            setDuration(180)
+        }
+        background = rounded(c.surfaceAlt, r, ctx.dp(1), c.border)
+        header.background = pressable(null, r)
+    }
+
+    fun select(key: String) {
+        current = key
+        render()
+    }
+
+    private fun choose(key: String) {
+        current = key
+        setExpanded(false)
+        onSelect(key)
+    }
+
+    private fun toggle() = setExpanded(!expanded)
+
+    private fun setExpanded(on: Boolean) {
+        expanded = on
+        list.visibility = if (on) VISIBLE else GONE
+        chevron.animate().rotation(if (on) 180f else 0f).setDuration(180).start()
+        val c = T.c
+        background = if (on) rounded(c.surface, context.dpF(14f), context.dp(2), c.primary)
+        else rounded(c.surfaceAlt, context.dpF(14f), context.dp(1), c.border)
+    }
+
+    private fun render() {
+        val item = items.firstOrNull { it.key == current } ?: items.first()
+        titleView.text = item.title
+        subtitleView.text = item.subtitle
+        rows.forEach { (k, v) -> v.setChecked(k == item.key) }
+    }
 }

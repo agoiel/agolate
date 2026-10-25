@@ -140,7 +140,7 @@ class OverlayService : Service() {
         val openPi = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), flags)
         val notif = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setColor(Brand.TEAL)
+            .setColor(Brand.COCOA)
             .setContentTitle("agolate работает")
             .setContentText("Нажмите на кнопку «Аа», чтобы перевести область")
             .setOngoing(true)

@@ -33,11 +33,16 @@ DEFAULTS: dict = {
     "skip_cut_bubbles": True,         # пропускать текст, обрезанный краем области
 
     # --- Перевод ---
-    "translator": "google_free",      # google_free | deepl | microsoft | gemini | openai
+    "translator": "google_free",      # google_free | yandex | duckduckgo | lingva | deepl | microsoft |
+                                      # papago | gemini | claude | openai
     "context_size": 12,               # сколько прошлых реплик передавать как контекст
     "request_interval": 1.0,          # мин. пауза между запросами к переводчику, секунды
     "glossary": "",                   # имя файла глоссария в папке glossaries (пусто — без глоссария)
     "translators": {
+        "yandex": {"api_key": "", "folder_id": ""},
+        "lingva": {"base_url": "https://lingva.ml"},
+        "papago": {"client_id": "", "client_secret": ""},
+        "claude": {"api_key": "", "model": "claude-haiku-5-5"},
         "deepl": {"api_key": ""},
         "microsoft": {"api_key": "", "region": "global"},
         "gemini": {"api_key": "", "model": "gemini-2.5-flash-lite"},

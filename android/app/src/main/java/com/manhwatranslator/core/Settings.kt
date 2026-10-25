@@ -24,6 +24,13 @@ class Settings(ctx: Context) {
     var openaiUrl by str("openai_url", "https://api.openai.com/v1")
     var openaiKey by str("openai_key", "")
     var openaiModel by str("openai_model", "gpt-4o-mini")
+    var yandexKey by str("yandex_key", "")
+    var yandexFolder by str("yandex_folder", "")
+    var lingvaUrl by str("lingva_url", "https://lingva.ml")
+    var papagoId by str("papago_id", "")
+    var papagoSecret by str("papago_secret", "")
+    var claudeKey by str("claude_key", "")
+    var claudeModel by str("claude_model", "claude-haiku-5-5")
 
     var bubbleGap by float("bubble_gap", 1.1f)
     var skipFreeText by bool("skip_free", false)

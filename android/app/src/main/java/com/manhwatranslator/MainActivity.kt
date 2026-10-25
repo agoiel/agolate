@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -38,15 +39,6 @@ class MainActivity : Activity() {
         const val REQ_NOTIF = 3
     }
 
-    /** Описания переводчиков для списка выбора. */
-    private val translatorInfo = mapOf(
-        "google_free" to ("Google" to "Без ключа · бесплатно · среднее качество"),
-        "deepl" to ("DeepL" to "Нужен ключ · 500 тыс. символов в месяц бесплатно"),
-        "microsoft" to ("Microsoft" to "Нужен ключ · 2 млн символов в месяц бесплатно"),
-        "gemini" to ("Gemini" to "ИИ · лучшее качество · есть бесплатный лимит"),
-        "openai" to ("OpenAI-совместимый" to "ИИ · OpenAI, OpenRouter, DeepSeek и другие"),
-    )
-
     private lateinit var s: Settings
     private lateinit var ui: Ui
     private val main = Handler(Looper.getMainLooper())
@@ -59,7 +51,7 @@ class MainActivity : Activity() {
     private lateinit var tgtPicker: PickerView
     private lateinit var glossPicker: PickerView
     private lateinit var keysBox: LinearLayout
-    private val choiceItems = LinkedHashMap<String, ChoiceItem>()
+    private lateinit var translatorDropdown: Dropdown
     private var lastRunning: Boolean? = null
 
     private val poll = object : Runnable {
@@ -133,15 +125,27 @@ class MainActivity : Activity() {
         heroInner = ui.vertical().apply { background = HeroDrawable(this@MainActivity, dpF(28f)) }
 
         val brandRow = ui.horizontal()
-        val logo = FrameLayout(this).apply {
-            background = rounded(android.graphics.Color.argb(40, 255, 255, 255), dpF(14f))
-            addView(ImageView(this@MainActivity).apply { setImageDrawable(tinted(R.drawable.ic_cloud, Brand.ICE)) },
-                FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher_art)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            // показываем середину слоя иконки (как на рабочем столе)
+            scaleX = 1.45f
+            scaleY = 1.45f
         }
-        brandRow.addView(logo, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val logoFrame = FrameLayout(this).apply {
+            background = oval(Brand.SAND)
+            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+            clipToOutline = true
+            addView(logo, FrameLayout.LayoutParams(dp(50), dp(50)))
+            foreground = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(2), Brand.CREAM)
+            }
+        }
+        brandRow.addView(logoFrame, LinearLayout.LayoutParams(dp(50), dp(50)))
         val titles = ui.vertical()
         titles.addView(ui.text("agolate", 24f, android.graphics.Color.WHITE, Fonts.medium))
-        titles.addView(ui.text("Перевод манхвы прямо с экрана", 13.5f, Brand.ICE))
+        titles.addView(ui.text("Перевод манхвы прямо с экрана", 13.5f, Brand.CREAM))
         brandRow.addView(titles, lp(0, weight = 1f).margins(this, start = 14))
         heroInner.addView(brandRow)
 
@@ -153,7 +157,7 @@ class MainActivity : Activity() {
         heroInner.addView(startBtn, lp().margins(this, top = 14))
 
         heroInner.addView(ui.text("«Аа» в читалке — перевести  ·  ещё раз — убрать  ·  долгое нажатие — новая область",
-            12.5f, Brand.ICE).apply { alpha = 0.85f }, lp().margins(this, top = 12))
+            12.5f, Brand.CREAM).apply { alpha = 0.85f }, lp().margins(this, top = 12))
         updateRunning()
         return heroInner
     }
@@ -228,14 +232,9 @@ class MainActivity : Activity() {
     private fun buildTranslator(): View {
         val card = ui.card()
         card.addView(ui.cardHeader("Переводчик", R.drawable.ic_bolt, "Чем переводить текст облаков"))
-        val list = ui.vertical()
-        for ((key, _) in Translators.all) {
-            val (title, sub) = translatorInfo[key] ?: (key to "")
-            val item = ChoiceItem(this, title, sub) { selectTranslator(key) }
-            choiceItems[key] = item
-            list.addView(item, lp().margins(this, top = 8))
-        }
-        card.addView(list, lp().margins(this, top = 6))
+        translatorDropdown = Dropdown(this, "ПЕРЕВОДЧИК",
+            Translators.all.map { Dropdown.Item(it.key, it.title, it.subtitle, it.group) }) { selectTranslator(it) }
+        card.addView(translatorDropdown, lp().margins(this, top = 14))
 
         keysBox = ui.vertical()
         card.addView(keysBox, lp().margins(this, top = 4))
@@ -252,10 +251,13 @@ class MainActivity : Activity() {
 
     private fun selectTranslator(key: String) {
         s.translator = key
-        choiceItems.forEach { (k, v) -> v.setChecked(k == key) }
+        translatorDropdown.select(key)
         keysBox.removeAllViews()
         fun field(label: String, value: String, hint: String, secret: Boolean = false, save: (String) -> Unit) {
             keysBox.addView(Field(this, label, value, hint, secret) { save(it.trim()) }, lp().margins(this, top = 12))
+        }
+        fun note(text: String) {
+            keysBox.addView(ui.caption(text), lp().margins(this, top = 12))
         }
         fun link(text: String, url: String) {
             val row = ui.horizontal().apply {
@@ -272,9 +274,37 @@ class MainActivity : Activity() {
             keysBox.addView(row, lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(this, top = 6))
         }
         when (key) {
-            "google_free" -> keysBox.addView(ui.caption(
-                "Ключ не нужен. Это неофициальный способ — если Google перестанет отвечать, выберите другой переводчик."),
-                lp().margins(this, top = 12))
+            "google_free" -> note("Ключ не нужен. Это неофициальный способ: при VPN Google часто ограничивает " +
+                "запросы — тогда выберите Lingva или Яндекс.")
+            "yandex" -> {
+                note("Работает без ключа. Если бесплатный способ перестанет отвечать, укажите ключ " +
+                    "Yandex Cloud — тогда перевод пойдёт через официальный API (платно, по символам).")
+                field("API-ключ Yandex Cloud (необязательно)", s.yandexKey, "AQVN…", secret = true) { s.yandexKey = it }
+                field("ID каталога (нужен вместе с ключом)", s.yandexFolder, "b1g…") { s.yandexFolder = it }
+                link("Как получить ключ", "https://yandex.cloud/ru/docs/translate/quickstart")
+            }
+            "duckduckgo" -> note("Ключ не нужен. DuckDuckGo переводит через Microsoft Bing. Способ неофициальный " +
+                "и может временно не отвечать.")
+            "lingva" -> {
+                note("Ключ не нужен. Lingva — открытый посредник к Google Переводчику: Google видит запрос " +
+                    "от сервера Lingva, а не от вас, поэтому ограничения VPN обычно не мешают.")
+                field("Адрес сервера Lingva", s.lingvaUrl, "https://lingva.ml") {
+                    s.lingvaUrl = it.ifEmpty { "https://lingva.ml" }
+                }
+                link("Список других серверов", "https://github.com/thedaviddelta/lingva-translate#instances")
+            }
+            "papago" -> {
+                note("Переводчик Naver — лучший для корейского. Нужна регистрация в Naver Cloud Platform. " +
+                    "На русский Papago переводит только с корейского и английского.")
+                field("Client ID", s.papagoId, "", secret = true) { s.papagoId = it }
+                field("Client Secret", s.papagoSecret, "", secret = true) { s.papagoSecret = it }
+                link("Открыть Naver Cloud Platform", "https://www.ncloud.com/product/aiService/papagoTranslation")
+            }
+            "claude" -> {
+                field("API-ключ Claude", s.claudeKey, "sk-ant-…", secret = true) { s.claudeKey = it }
+                field("Модель", s.claudeModel, "claude-haiku-5-5") { s.claudeModel = it.ifEmpty { "claude-haiku-5-5" } }
+                link("Получить ключ", "https://platform.claude.com")
+            }
             "deepl" -> {
                 field("API-ключ DeepL", s.deeplKey, "xxxxxxxx-xxxx:fx", secret = true) { s.deeplKey = it }
                 link("Получить бесплатный ключ", "https://www.deepl.com/pro-api")
