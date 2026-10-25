@@ -37,8 +37,9 @@ class Pipeline(private val ctx: Context) {
             joiner = src.joiner, rtl = src.rtl, gap = s.bubbleGap,
             skipFreeText = s.skipFreeText, skipCut = s.skipCut,
         ))
+        for (b in bubbles) b.lang = Languages.detect(b.text, src).code
         val t1 = System.currentTimeMillis()
-        if (!translate) return PageResult(bubbles, ocrMs = t1 - t0)
+        if (!translate) return PageResult(bubbles, ocrMs = t1 - t0, lineCount = lines.size)
 
         var hits = 0
         val todo = ArrayList<Bubble>()
@@ -51,18 +52,21 @@ class Pipeline(private val ctx: Context) {
         var error = ""
         if (todo.isNotEmpty()) {
             try {
-                translateBubbles(todo, s, src, tgt)
+                // облака на разных языках переводятся отдельными запросами
+                for ((code, group) in todo.groupBy { it.lang.ifEmpty { src.code } }) {
+                    translateBubbles(group, s, Languages.src(code), tgt)
+                }
             } catch (e: TranslateException) {
                 error = e.message ?: "Ошибка перевода"
             } catch (e: Exception) {
                 error = "Ошибка перевода: ${e.message}"
             }
         }
-        return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1)
+        return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size)
     }
 
     private fun key(s: Settings, text: String) =
-        "${s.sourceLang}>${s.targetLang}|${s.translator}|${text.replace(Regex("\\s+"), "").lowercase()}"
+        "${Languages.detect(text, Languages.src(s.sourceLang)).code}>${s.targetLang}|${s.translator}|${text.replace(Regex("\\s+"), "").lowercase()}"
 
     private fun translateBubbles(bubbles: List<Bubble>, s: Settings, src: SourceLang, tgt: TargetLang) {
         val texts = bubbles.map { it.text }

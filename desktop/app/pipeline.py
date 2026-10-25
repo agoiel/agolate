@@ -112,6 +112,9 @@ class Pipeline:
             skip_free_text=bool(cfg["skip_free_text"]),
             skip_cut=bool(cfg["skip_cut_bubbles"]),
         )
+        for b in result.bubbles:
+            b.lang = languages.detect(b.text, lang)
+        result.line_count = len(lines)
         t2 = time.perf_counter()
         result.timings["bubbles"] = t2 - t1
         if not translate:
@@ -131,7 +134,12 @@ class Pipeline:
 
         if todo:
             try:
-                self._translate(todo)
+                # облака на разных языках переводятся отдельными запросами
+                groups: dict[str, list] = {}
+                for b in todo:
+                    groups.setdefault(b.lang or lang, []).append(b)
+                for code, group in groups.items():
+                    self._translate(group, code)
             except TranslateError as e:
                 result.error = str(e)
         result.timings["translate"] = time.perf_counter() - t2
@@ -139,9 +147,10 @@ class Pipeline:
 
     def _cache_key(self, text: str) -> str:
         c = self.cfg
-        return f"{c['source_lang']}>{c['target_lang']}|{c['translator']}|{_norm(text)}"
+        src = languages.detect(text, c['source_lang'])
+        return f"{src}>{c['target_lang']}|{c['translator']}|{_norm(text)}"
 
-    def _translate(self, bubbles) -> None:
+    def _translate(self, bubbles, src_code: str) -> None:
         cfg = self.cfg
         texts = [b.text for b in bubbles]
         glossary = self._load_glossary()
@@ -150,7 +159,7 @@ class Pipeline:
 
         n_ctx = int(cfg["context_size"])
         req = TranslateRequest(
-            texts=texts, src=cfg["source_lang"], tgt=cfg["target_lang"],
+            texts=texts, src=src_code, tgt=cfg["target_lang"],
             history=list(self.history)[-n_ctx:] if n_ctx > 0 else [],
         )
         if glossary:

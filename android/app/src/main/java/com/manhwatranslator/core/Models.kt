@@ -26,6 +26,8 @@ class Bubble(val box: Box, val lines: List<TextLine>, val text: String) {
     var bgColor: Int = Color.WHITE
     var translation: String = ""
     var skipReason: String = ""
+    /** Язык облака, определённый по символам (ko, ja, zh, en …) */
+    var lang: String = ""
 
     val translatable: Boolean get() = skipReason.isEmpty() && text.isNotBlank()
     val lineHeight: Float get() = lines.map { it.box.h }.average().toFloat()
@@ -37,6 +39,8 @@ class PageResult(
     val cacheHits: Int = 0,
     val ocrMs: Long = 0,
     val translateMs: Long = 0,
+    /** Сколько строк нашло распознавание (до сборки в облака) */
+    val lineCount: Int = 0,
 )
 
 /** Пиксели картинки для анализа фона (ARGB, построчно). */

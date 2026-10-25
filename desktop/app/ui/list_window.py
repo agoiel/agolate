@@ -49,7 +49,8 @@ class ListWindow(QWidget):
                 tr = f"<i style='color:#888'>— {html.escape(b.skip_reason or 'нет перевода')} —</i>"
             block = f"<p style='margin:6px 0'><b style='color:#4a90d9'>{i}.</b> <span style='font-size:15px'>{tr}</span>"
             if self.show_original.isChecked():
-                block += f"<br><span style='color:#999;font-size:12px'>{orig}</span>"
+                tag = f"{b.lang.upper()} · " if b.lang else ""
+                block += f"<br><span style='color:#999;font-size:12px'>{tag}{orig}</span>"
             parts.append(block + "</p>")
         if result.error:
             parts.insert(0, f"<p style='color:#d9534f'>{html.escape(result.error)}</p>")

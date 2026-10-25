@@ -64,6 +64,8 @@ class Bubble:
     kind: str = "bubble"
     bg_color: tuple[int, int, int] = (255, 255, 255)
     translation: str = ""
+    # Язык облака, определённый по символам (ko, ja, zh, en …)
+    lang: str = ""
     # Причина, по которой облако не переводится (пусто — переводится)
     skip_reason: str = ""
 
@@ -83,3 +85,5 @@ class PageResult:
     cache_hits: int = 0
     # Код языка, для которого в Windows не хватает OCR (тогда предлагаем докачать)
     missing_ocr_lang: str = ""
+    # Сколько строк нашло распознавание (до сборки в облака)
+    line_count: int = 0

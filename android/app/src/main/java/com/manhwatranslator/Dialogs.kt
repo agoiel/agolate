@@ -49,7 +49,7 @@ object Dialogs {
         box.addView(ui.text("Результат", 20f, c.text, Fonts.medium))
         val stats = buildString {
             val n = res.bubbles.count { it.translation.isNotBlank() }
-            append("Облаков: $n · OCR ${res.ocrMs} мс · перевод ${res.translateMs} мс")
+            append("Строк: ${res.lineCount} · облаков: $n · OCR ${res.ocrMs} мс · перевод ${res.translateMs} мс")
             if (res.cacheHits > 0) append(" · из кэша ${res.cacheHits}")
         }
         box.addView(ui.caption(stats), lp().margins(ctx, top = 2))
@@ -62,7 +62,10 @@ object Dialogs {
             }, lp().margins(ctx, top = 12))
         }
         if (res.bubbles.isEmpty() && res.error.isEmpty()) {
-            list.addView(ui.caption("Текст не найден. Попробуйте картинку крупнее или другой язык оригинала."),
+            list.addView(ui.caption(if (res.lineCount == 0)
+                "Распознавание не нашло ни одной строки. Попробуйте режим «Тщательный» или «Максимальный» в тонкой настройке."
+            else
+                "Строки найдены, но все отфильтрованы. Проверьте настройки «Пропускать обрезанное» и «Не переводить звуки»."),
                 lp().margins(ctx, top = 12))
         }
         res.bubbles.forEachIndexed { i, b ->
@@ -86,7 +89,8 @@ object Dialogs {
             } else {
                 col.addView(ui.text("— ${b.skipReason.ifBlank { "нет перевода" }} —", 14f, c.text2))
             }
-            col.addView(ui.text(b.text, 12.5f, c.text2).apply { setTextIsSelectable(true) }, lp().margins(ctx, top = 4))
+            val tag = if (b.lang.isNotEmpty()) "${b.lang.uppercase()} · " else ""
+            col.addView(ui.text(tag + b.text, 12.5f, c.text2).apply { setTextIsSelectable(true) }, lp().margins(ctx, top = 4))
             item.addView(col, lp(0, weight = 1f).margins(ctx, start = 12))
             list.addView(item, lp().margins(ctx, top = 8))
         }

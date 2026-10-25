@@ -38,5 +38,29 @@ object Languages {
     )
 
     fun src(code: String): SourceLang = sources.firstOrNull { it.code == code } ?: sources[0]
+
+    private val hangul = Regex("[\\uAC00-\\uD7AF\\u1100-\\u11FF\\u3130-\\u318F]")
+    private val kana = Regex("[\\u3040-\\u30FF\\u31F0-\\u31FF\\uFF66-\\uFF9F]")
+    private val han = Regex("[\\u3400-\\u4DBF\\u4E00-\\u9FFF]")
+    private val latin = Regex("[A-Za-z\\u00C0-\\u024F]")
+
+    /**
+     * Язык конкретного облака по символам. Если в облаке только латиница, оно переводится
+     * как английское, даже когда в настройках выбран корейский (страница со сканлейтом,
+     * вывески, вставки на английском). Иначе — язык из настроек.
+     */
+    fun detect(text: String, selected: SourceLang): SourceLang {
+        val h = hangul.findAll(text).count()
+        val k = kana.findAll(text).count()
+        val c = han.findAll(text).count()
+        val l = latin.findAll(text).count()
+        return when {
+            h > 0 && h >= k -> src("ko")
+            k > 0 -> src("ja")
+            c > 0 -> if (selected.code == "ja" || selected.code.startsWith("zh")) selected else src("zh")
+            l >= 2 -> src("en")
+            else -> selected
+        }
+    }
     fun tgt(code: String): TargetLang = targets.firstOrNull { it.code == code } ?: targets[0]
 }
