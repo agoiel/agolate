@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import sys
 import traceback
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QFileDialog, QGridLayout, QLabel,
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
@@ -493,6 +495,11 @@ def run_gui() -> int:
     sys.excepthook = _excepthook
     app = QApplication(sys.argv)
     app.setApplicationName("agolate")
+    # иконка окна: рядом с main.py или внутри собранного exe
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+    icon = base / "icon.png"
+    if icon.exists():
+        app.setWindowIcon(QIcon(str(icon)))
     app.setQuitOnLastWindowClosed(False)
     cfg = Config()
     panel = ControlPanel(cfg)
