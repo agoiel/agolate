@@ -42,6 +42,9 @@ class FloatingButton(
         set(v) { field = v; invalidate() }
     var showingTranslation = false
         set(v) { field = v; invalidate() }
+    /** null — режим «Скриншот»; true/false — режим Live включён/на паузе */
+    var live: Boolean? = null
+        set(v) { field = v; invalidate() }
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -76,17 +79,23 @@ class FloatingButton(
         c.drawCircle(r, r + context.dpF(1.5f), body + context.dpF(1f), shadow)
         fill.color = when {
             busy -> Brand.SAND
+            live == false -> Brand.INK
+            live == true -> Brand.COCOA
             showingTranslation -> Brand.BOW
             else -> Brand.COCOA
         }
-        ring.color = Brand.CREAM
+        ring.color = if (live == true) Brand.SAND else Brand.CREAM
+        ring.strokeWidth = context.dpF(if (live == true) 3f else 2f)
         c.drawCircle(r, r, body, fill)
         c.drawCircle(r, r, body, ring)
         val label = when {
             busy -> "…"
+            live == true -> "LIVE"
+            live == false -> "II"
             showingTranslation -> "✕"
             else -> "Аа"
         }
+        text.textSize = context.dpF(if (label.length > 2) 12f else 17f)
         text.color = if (busy) Brand.INK else Color.WHITE
         c.drawText(label, r, r - (text.descent() + text.ascent()) / 2, text)
     }
@@ -125,6 +134,8 @@ class FloatingButton(
 @SuppressLint("ViewConstructor")
 class RegionSelectView(
     ctx: Context,
+    /** выделять по всей ширине экрана: пользователь задаёт только верх и низ */
+    private val fullWidth: Boolean,
     private val onSelected: (Rect) -> Unit,
     private val onCancel: () -> Unit,
 ) : View(ctx) {
@@ -154,14 +165,16 @@ class RegionSelectView(
     private var active = false
     private val loc = IntArray(2)
 
-    private fun rect() = RectF(min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey))
+    private fun rect() = if (fullWidth) RectF(0f, min(sy, ey), width.toFloat(), max(sy, ey))
+    else RectF(min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey))
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
         if (!active) {
             c.drawRect(0f, 0f, w, h, dim)
-            drawHint(c, w / 2, h * 0.38f, "Выделите пальцем область чтения")
+            drawHint(c, w / 2, h * 0.38f,
+                if (fullWidth) "Проведите сверху вниз по высоте области" else "Выделите пальцем область чтения")
             drawHint(c, w / 2, h * 0.38f + context.dpF(48f), "Короткое касание — отмена")
             return
         }
@@ -196,7 +209,7 @@ class RegionSelectView(
             MotionEvent.ACTION_UP -> {
                 ex = e.x; ey = e.y
                 val r = rect()
-                if (r.width() < context.dpF(40f) || r.height() < context.dpF(40f)) {
+                if ((!fullWidth && r.width() < context.dpF(40f)) || r.height() < context.dpF(40f)) {
                     onCancel()
                 } else {
                     // в координаты экрана (слой может начинаться не с 0,0)
@@ -210,17 +223,86 @@ class RegionSelectView(
     }
 }
 
+// ==================================================================== плашки с переводом
+
+/** Рисует плашки с переводом. Используется и поверх экрана, и на переведённом скриншоте. */
+class PlateRenderer(private val ctx: Context) {
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+    private val minFontPx = ctx.dpF(8f)
+
+    /** [scale] — во сколько раз пиксели картинки крупнее пикселей экрана (для скриншота). */
+    fun draw(c: Canvas, bubbles: List<Bubble>, ox: Float, oy: Float, maxFontPx: Float, scale: Float = 1f) {
+        for (b in bubbles) {
+            if (b.translation.isBlank()) continue
+            val pad = max(ctx.dpF(3f) * scale, 0.35f * b.lineHeight)
+            // русский текст длиннее корейского — даём плашке стать шире
+            val w = max(max(b.box.w + 2 * pad, b.box.w * 1.3f), ctx.dpF(48f) * scale)
+            var h = b.box.h + 2 * pad
+            val cx = ox + b.box.cx
+            val cy = oy + b.box.cy
+            val textW = max(10, (w - 2 * ctx.dpF(3f) * scale).toInt())
+            val maxSize = maxFontPx * scale
+            var size = maxSize
+            var layout = makeLayout(b.translation, textW, size)
+            while (layout.height > h - ctx.dpF(4f) * scale && size > minFontPx * scale) {
+                size -= scale
+                layout = makeLayout(b.translation, textW, size)
+            }
+            h = max(h, layout.height + ctx.dpF(6f) * scale)
+
+            val rect = RectF(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+            val bg = b.bgColor
+            val lum = 0.299 * Color.red(bg) + 0.587 * Color.green(bg) + 0.114 * Color.blue(bg)
+            if (b.kind == "free") {
+                fill.color = Color.argb(235, 20, 20, 20)
+                paint.color = Color.WHITE
+            } else {
+                fill.color = Color.argb(255, Color.red(bg), Color.green(bg), Color.blue(bg))
+                paint.color = if (lum > 140) Color.rgb(15, 15, 15) else Color.rgb(250, 250, 250)
+            }
+            val radius = ctx.dpF(8f) * scale
+            c.drawRoundRect(rect, radius, radius, fill)
+            c.save()
+            c.translate(rect.left + (w - textW) / 2, rect.top + (h - layout.height) / 2)
+            layout.draw(c)
+            c.restore()
+        }
+    }
+
+    private fun makeLayout(text: String, width: Int, size: Float): StaticLayout {
+        paint.textSize = size
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+            .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setIncludePad(false)
+            .build()
+    }
+}
+
 // ==================================================================== перевод поверх облаков
 
-/** Рисует плашки с переводом поверх облаков. Не перехватывает касания. */
+/** Рисует плашки с переводом поверх облаков и рамку зоны. Не перехватывает касания. */
 class TranslationView(ctx: Context) : View(ctx) {
     private var bubbles: List<Bubble> = emptyList()
     private var region = Rect()
     private var maxFontPx = ctx.dpF(16f)
-    private val minFontPx = ctx.dpF(8f)
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+    private val renderer = PlateRenderer(ctx)
     private val loc = IntArray(2)
+    private var frame: Rect? = null
+    private val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = ctx.dpF(3f)
+        color = Brand.SAND
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(ctx.dpF(12f), ctx.dpF(8f)), 0f)
+    }
+    private val frameFill = Paint().apply { color = Color.argb(40, 172, 134, 83) }
+    private val labelBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Brand.INK }
+    private val labelText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Brand.CREAM
+        textSize = ctx.dpF(13f)
+        typeface = Fonts.medium
+    }
+    private val hideFrame = Runnable { frame = null; invalidate() }
 
     val hasContent: Boolean get() = bubbles.any { it.translation.isNotBlank() }
 
@@ -236,53 +318,73 @@ class TranslationView(ctx: Context) : View(ctx) {
         invalidate()
     }
 
+    /** Показать рамку текущей зоны на пару секунд. */
+    fun showFrame(r: Rect, ms: Long = 2500) {
+        frame = Rect(r)
+        removeCallbacks(hideFrame)
+        postDelayed(hideFrame, ms)
+        invalidate()
+    }
+
     override fun onDraw(c: Canvas) {
-        if (bubbles.isEmpty()) return
         getLocationOnScreen(loc)
-        val ox = region.left - loc[0]
-        val oy = region.top - loc[1]
-        for (b in bubbles) {
-            if (b.translation.isBlank()) continue
-            val pad = max(context.dpF(3f), 0.35f * b.lineHeight)
-            // русский текст длиннее корейского — даём плашке стать шире
-            val w = max(max(b.box.w + 2 * pad, b.box.w * 1.3f), context.dpF(48f))
-            var h = b.box.h + 2 * pad
-            val cx = ox + b.box.cx
-            val cy = oy + b.box.cy
-            val textW = max(10, (w - 2 * context.dpF(3f)).toInt())
+        frame?.let { f ->
+            val rf = RectF((f.left - loc[0]).toFloat(), (f.top - loc[1]).toFloat(),
+                (f.right - loc[0]).toFloat(), (f.bottom - loc[1]).toFloat())
+            c.drawRect(rf, frameFill)
+            c.drawRect(rf, framePaint)
+            val label = "Зона перевода · ${f.width()}×${f.height()}"
+            val tw = labelText.measureText(label)
+            val pad = context.dpF(10f)
+            val top = max(rf.top + context.dpF(8f), context.dpF(8f))
+            val pill = RectF(rf.left + context.dpF(8f), top, rf.left + context.dpF(8f) + tw + 2 * pad, top + context.dpF(28f))
+            c.drawRoundRect(pill, context.dpF(14f), context.dpF(14f), labelBg)
+            c.drawText(label, pill.left + pad, pill.centerY() - (labelText.descent() + labelText.ascent()) / 2, labelText)
+        }
+        if (bubbles.isEmpty()) return
+        renderer.draw(c, bubbles, (region.left - loc[0]).toFloat(), (region.top - loc[1]).toFloat(), maxFontPx)
+    }
+}
 
-            var layout = makeLayout(b.translation, textW, maxFontPx)
-            var size = maxFontPx
-            while (layout.height > h - context.dpF(4f) && size > minFontPx) {
-                size -= 1f
-                layout = makeLayout(b.translation, textW, size)
-            }
-            h = max(h, layout.height + context.dpF(6f))
+// ==================================================================== меню плавающей кнопки
 
-            val rect = RectF(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
-            val bg = b.bgColor
-            val lum = 0.299 * Color.red(bg) + 0.587 * Color.green(bg) + 0.114 * Color.blue(bg)
-            if (b.kind == "free") {
-                fill.color = Color.argb(235, 20, 20, 20)
-                paint.color = Color.WHITE
-            } else {
-                fill.color = Color.argb(255, Color.red(bg), Color.green(bg), Color.blue(bg))
-                paint.color = if (lum > 140) Color.rgb(15, 15, 15) else Color.rgb(250, 250, 250)
-            }
-            val radius = context.dpF(8f)
-            c.drawRoundRect(rect, radius, radius, fill)
-            c.save()
-            c.translate(rect.left + (w - textW) / 2, rect.top + (h - layout.height) / 2)
-            layout.draw(c)
-            c.restore()
+/** Небольшое меню рядом с плавающей кнопкой (по долгому нажатию). */
+@SuppressLint("ViewConstructor")
+class ButtonMenu(ctx: Context, items: List<Pair<String, () -> Unit>>, private val onDismiss: () -> Unit) :
+    android.widget.LinearLayout(ctx) {
+    init {
+        orientation = VERTICAL
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = ctx.dpF(18f)
+            setColor(Brand.INK)
+            setStroke(ctx.dpF(1.5f).toInt(), Brand.SAND)
+        }
+        val pad = ctx.dpF(6f).toInt()
+        setPadding(pad, pad, pad, pad)
+        for ((title, action) in items) {
+            addView(android.widget.TextView(ctx).apply {
+                text = title
+                textSize = 15f
+                typeface = Fonts.medium
+                setTextColor(Brand.CREAM)
+                val h = ctx.dpF(14f).toInt()
+                val v = ctx.dpF(11f).toInt()
+                setPadding(h, v, h, v)
+                background = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(Color.argb(60, 243, 227, 204)), null,
+                    android.graphics.drawable.ColorDrawable(Color.WHITE))
+                setOnClickListener { onDismiss(); action() }
+            })
         }
     }
 
-    private fun makeLayout(text: String, width: Int, size: Float): StaticLayout {
-        paint.textSize = size
-        return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
-            .setAlignment(Layout.Alignment.ALIGN_CENTER)
-            .setIncludePad(false)
-            .build()
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        // касание за пределами меню закрывает его
+        if (e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+            onDismiss()
+            return true
+        }
+        return super.onTouchEvent(e)
     }
 }

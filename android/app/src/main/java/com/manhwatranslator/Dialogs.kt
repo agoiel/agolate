@@ -2,6 +2,11 @@ package com.manhwatranslator
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.util.TypedValue
+import android.widget.ImageView
+import com.manhwatranslator.core.Settings
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
@@ -42,7 +47,7 @@ object Dialogs {
         return base(ctx, box, cancelable = false).also { it.show() }
     }
 
-    fun result(ctx: Context, res: PageResult) {
+    fun result(ctx: Context, res: PageResult, image: Bitmap? = null) {
         val ui = Ui(ctx)
         val c = T.c
         val box = ui.vertical().apply { setPadding(ctx.dp(20), ctx.dp(20), ctx.dp(20), ctx.dp(16)) }
@@ -51,10 +56,31 @@ object Dialogs {
             val n = res.bubbles.count { it.translation.isNotBlank() }
             append("Строк: ${res.lineCount} · облаков: $n · OCR ${res.ocrMs} мс · перевод ${res.translateMs} мс")
             if (res.cacheHits > 0) append(" · из кэша ${res.cacheHits}")
+            if (res.ocrStats.isNotEmpty()) append("\nРаспознаватели: ${res.ocrStats}")
         }
         box.addView(ui.caption(stats), lp().margins(ctx, top = 2))
 
         val list = ui.vertical()
+        // переведённый скриншот: плашки с переводом прямо на картинке
+        if (image != null && res.bubbles.any { it.translation.isNotBlank() }) {
+            val out = image.copy(Bitmap.Config.ARGB_8888, true)
+            val canvas = Canvas(out)
+            // шрифт подбираем под ширину картинки, как если бы она была на весь экран
+            val scale = out.width.toFloat() / ctx.resources.displayMetrics.widthPixels
+            val maxFont = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
+                Settings(ctx).maxFontSp.toFloat(), ctx.resources.displayMetrics)
+            PlateRenderer(ctx).draw(canvas, res.bubbles, 0f, 0f, maxFont, scale)
+            val iv = ImageView(ctx).apply {
+                setImageBitmap(out)
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                background = rounded(c.surfaceAlt, ctx.dpF(14f))
+                clipToOutline = true
+                outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+            }
+            list.addView(iv, lp().margins(ctx, top = 12))
+            list.addView(ui.caption("Ниже — список реплик с оригиналом"), lp().margins(ctx, top = 8))
+        }
         if (res.error.isNotEmpty()) {
             list.addView(ui.text(res.error, 14f, c.text).apply {
                 background = rounded(c.selectedBg, ctx.dpF(14f))
@@ -117,7 +143,8 @@ object Dialogs {
             "Откройте читалку. Справа появится круглая кнопка «Аа» — её можно перетащить куда удобно.",
             "Нажмите «Аа»: в первый раз выделите пальцем область чтения, дальше она запомнится.",
             "Перевод появится прямо поверх облаков. Нажмите «Аа» ещё раз — перевод исчезнет, листайте дальше.",
-            "Долгое нажатие на «Аа» — выделить новую область. Остановить переводчик можно здесь или из уведомления.",
+            "Долгое нажатие на кнопку открывает меню: новая зона, показать текущую зону, смена режима, остановка.",
+            "Режим Live: перевод появляется сам, когда страница перестаёт двигаться. Нажатие на кнопку — пауза.",
         )
         val list = ui.vertical()
         steps.forEachIndexed { i, t ->

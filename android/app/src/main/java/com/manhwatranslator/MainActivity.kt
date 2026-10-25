@@ -26,6 +26,7 @@ import android.widget.Toast
 import com.manhwatranslator.core.Enhance
 import com.manhwatranslator.core.GlossaryStore
 import com.manhwatranslator.core.Languages
+import com.manhwatranslator.core.Ocr
 import com.manhwatranslator.core.PageResult
 import com.manhwatranslator.core.Pipeline
 import com.manhwatranslator.core.Settings
@@ -48,6 +49,8 @@ class MainActivity : Activity() {
     private lateinit var heroInner: LinearLayout
     private lateinit var statusChip: StatusChip
     private lateinit var startBtn: PillButton
+    private lateinit var modeSwitch: Segmented
+    private lateinit var modeHint: TextView
     private lateinit var srcPicker: PickerView
     private lateinit var tgtPicker: PickerView
     private lateinit var glossPicker: PickerView
@@ -105,6 +108,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        Ocr.requestModules(this, Languages.src(s.sourceLang))
         refreshGlossary()
         main.post(poll)
     }
@@ -153,14 +157,31 @@ class MainActivity : Activity() {
         statusChip = StatusChip(this)
         heroInner.addView(statusChip, lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(this, top = 22))
 
+        modeSwitch = Segmented(this, listOf("shot" to "Скриншот", "live" to "Live"), s.translateMode) { mode ->
+            s.translateMode = mode
+            updateModeHint()
+            if (OverlayService.running) {
+                toast("Режим сменится при следующем запуске. Или переключите его в меню кнопки (долгое нажатие).")
+            }
+        }
+        heroInner.addView(modeSwitch, lp().margins(this, top = 16))
+
         startBtn = PillButton(this, "", R.drawable.ic_play, PillStyle.HERO, 56)
         startBtn.onClick { onStartClicked() }
         heroInner.addView(startBtn, lp().margins(this, top = 14))
 
-        heroInner.addView(ui.text("«Аа» в читалке — перевести  ·  ещё раз — убрать  ·  долгое нажатие — новая область",
-            12.5f, Brand.CREAM).apply { alpha = 0.85f }, lp().margins(this, top = 12))
+        modeHint = ui.text("", 12.5f, Brand.CREAM).apply { alpha = 0.85f }
+        heroInner.addView(modeHint, lp().margins(this, top = 12))
+        updateModeHint()
         updateRunning()
         return heroInner
+    }
+
+    private fun updateModeHint() {
+        modeHint.text = if (s.translateMode == "live")
+            "Live: перевод появляется сам, когда страница перестаёт двигаться  ·  нажатие на кнопку — пауза  ·  долгое — меню"
+        else
+            "Скриншот: нажатие на «Аа» — перевести, ещё раз — убрать  ·  долгое нажатие — меню"
     }
 
     private fun updateRunning() {
@@ -176,7 +197,7 @@ class MainActivity : Activity() {
     private fun buildTiles(): View {
         val row = ui.horizontal().apply { gravity = Gravity.TOP }
         val tiles = listOf(
-            Tile(this, "Проверить\nна картинке", R.drawable.ic_image) { pickImage() },
+            Tile(this, "Перевести\nскриншот", R.drawable.ic_image) { pickImage() },
             Tile(this, "Новый\nтайтл", R.drawable.ic_refresh) { resetSession() },
             Tile(this, "Как\nпользоваться", R.drawable.ic_help) { showHelp() },
         )
@@ -213,6 +234,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("Язык оригинала")
             .setSingleChoiceItems(items, cur) { d, which ->
                 s.sourceLang = Languages.sources[which].code
+                Ocr.requestModules(this, Languages.src(s.sourceLang))
                 renderLanguages()
                 d.dismiss()
             }.show()
@@ -397,6 +419,8 @@ class MainActivity : Activity() {
         body.addView(SwitchRow(this, "Не переводить звуки", "Текст поверх рисунка, а не в облаке", s.skipFreeText) {
             s.skipFreeText = it
         }, lp().margins(this, top = 10))
+        body.addView(SwitchRow(this, "Выделять по всей ширине", "Проводите только сверху вниз — ширина берётся вся",
+            s.fullWidthSelect) { s.fullWidthSelect = it }, lp().margins(this, top = 2))
         body.addView(SwitchRow(this, "Пропускать обрезанное", "Текст, который режет край области", s.skipCut) {
             s.skipCut = it
         }, lp().margins(this, top = 2))
@@ -489,7 +513,10 @@ class MainActivity : Activity() {
         if (uri != null) translateImage(uri)
     }
 
+    private var shot: Bitmap? = null
+
     private fun translateImage(uri: Uri) {
+        shot = null
         val progress = Dialogs.progress(this, "Распознаю и перевожу…")
         thread {
             val res: PageResult = try {
@@ -499,14 +526,16 @@ class MainActivity : Activity() {
                 } else {
                     val soft = if (bmp.config == Bitmap.Config.ARGB_8888) bmp else bmp.copy(Bitmap.Config.ARGB_8888, false)
                     val p = testPipeline ?: Pipeline(this).also { testPipeline = it }
-                    p.process(cropStatusBar(soft), s)
+                    val img = cropStatusBar(soft)
+                    shot = img
+                    p.process(img, s)
                 }
             } catch (e: Exception) {
                 PageResult(error = "Ошибка: ${e.message}")
             }
             main.post {
                 progress.dismiss()
-                Dialogs.result(this, res)
+                Dialogs.result(this, res, shot)
             }
         }
     }

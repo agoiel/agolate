@@ -41,6 +41,7 @@ class OverlayService : Service() {
         const val EXTRA_DATA = "data"
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 1
+        private const val LIVE_INTERVAL_MS = 700L
 
         @Volatile var running = false
             private set
@@ -57,7 +58,20 @@ class OverlayService : Service() {
     private var buttonParams: WindowManager.LayoutParams? = null
     private var translationView: TranslationView? = null
     private var selectView: RegionSelectView? = null
+    private var menu: ButtonMenu? = null
     private var busy = false
+
+    // ---- режим Live
+    private var liveOn = false
+    private var liveShown = false             // перевод показан и страница не двигалась
+    private var prevThumb: IntArray? = null   // предыдущий кадр (уменьшенный)
+    private var baseThumb: IntArray? = null   // кадр сразу после показа перевода
+    private val liveTick = object : Runnable {
+        override fun run() {
+            liveStep()
+            if (liveOn) main.postDelayed(this, LIVE_INTERVAL_MS)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -114,11 +128,14 @@ class OverlayService : Service() {
         }
         if (button == null) showButton()
         running = true
+        if (settings.translateMode == "live") setLive(true)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        liveOn = false
+        main.removeCallbacks(liveTick)
         removeViews()
         capturer?.stop()
         capturer = null
@@ -185,7 +202,7 @@ class OverlayService : Service() {
         // Кнопка добавляется после слоя — значит, она поверх него
         val b = FloatingButton(this,
             onTap = { onButtonTap() },
-            onLongPress = { startSelection() },
+            onLongPress = { openMenu() },
             onMove = { dx, dy ->
                 buttonParams?.let { p ->
                     p.x += dx; p.y += dy
@@ -204,11 +221,12 @@ class OverlayService : Service() {
         buttonParams = p
 
         if (settings.region == null) {
-            toast("Долгое нажатие на кнопку — выделить область, обычное — перевести")
+            toast("Нажмите на кнопку, чтобы выделить область. Долгое нажатие — меню")
         }
     }
 
     private fun removeViews() {
+        closeMenu()
         listOf<View?>(selectView, translationView, button).forEach { v ->
             if (v != null) try { wm.removeView(v) } catch (_: Exception) {}
         }
@@ -219,6 +237,8 @@ class OverlayService : Service() {
 
     private fun stopEverything() {
         running = false
+        liveOn = false
+        main.removeCallbacks(liveTick)
         removeViews()
         capturer?.stop()
         capturer = null
@@ -229,10 +249,16 @@ class OverlayService : Service() {
     private fun updateButton() {
         button?.busy = busy
         button?.showingTranslation = translationView?.hasContent == true
+        button?.live = if (settings.translateMode == "live") liveOn else null
     }
 
     // ---------------------------------------------------------------- действия
     private fun onButtonTap() {
+        if (menu != null) { closeMenu(); return }
+        if (settings.translateMode == "live") {
+            if (settings.region == null) startSelection() else setLive(!liveOn)
+            return
+        }
         if (busy) return
         val tv = translationView
         if (tv != null && tv.hasContent) {
@@ -247,14 +273,17 @@ class OverlayService : Service() {
         if (selectView != null || busy) return
         translationView?.clear()
         updateButton()
-        val v = RegionSelectView(this,
+        val wasLive = liveOn
+        if (wasLive) setLive(false)
+        val v = RegionSelectView(this, settings.fullWidthSelect,
             onSelected = { r ->
                 closeSelection()
                 settings.region = r
                 // даём экрану перерисоваться без затемнения
-                main.postDelayed({ translate() }, 150)
+                if (settings.translateMode == "live") main.postDelayed({ setLive(true) }, 150)
+                else main.postDelayed({ translate() }, 150)
             },
-            onCancel = { closeSelection() },
+            onCancel = { closeSelection(); if (wasLive) setLive(true) },
         )
         val p = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, 0)
         wm.addView(v, p)
@@ -268,7 +297,129 @@ class OverlayService : Service() {
         button?.visibility = View.VISIBLE
     }
 
-    private fun translate() {
+    // ---------------------------------------------------------------- меню кнопки
+    private fun openMenu() {
+        if (menu != null || selectView != null) return
+        val live = settings.translateMode == "live"
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items.add("Выделить новую зону" to { startSelection() })
+        if (settings.region != null) items.add("Показать зону" to { showZone() })
+        if (translationView?.hasContent == true) items.add("Убрать перевод" to { translationView?.clear(); updateButton() })
+        items.add((if (live) "Режим: Live → Скриншот" else "Режим: Скриншот → Live") to { switchMode() })
+        items.add("Остановить переводчик" to { stopEverything() })
+
+        val m = ButtonMenu(this, items) { closeMenu() }
+        val p = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH)
+        val bp = buttonParams
+        val bw = button?.sizePx ?: 0
+        val screenW = resources.displayMetrics.widthPixels
+        val gap = dpF(8f).toInt()
+        // меню — со стороны, где больше места
+        val right = (bp?.x ?: 0) + bw / 2 < screenW / 2
+        m.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        p.x = if (right) (bp?.x ?: 0) + bw + gap else ((bp?.x ?: 0) - m.measuredWidth - gap).coerceAtLeast(gap)
+        p.y = (bp?.y ?: 0).coerceAtLeast(gap)
+        wm.addView(m, p)
+        menu = m
+    }
+
+    private fun closeMenu() {
+        menu?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        menu = null
+    }
+
+    private fun showZone() {
+        val r = settings.region
+        if (r == null) {
+            toast("Зона ещё не выделена")
+            return
+        }
+        translationView?.showFrame(r)
+    }
+
+    private fun switchMode() {
+        if (settings.translateMode == "live") {
+            settings.translateMode = "shot"
+            setLive(false)
+            toast("Режим «Скриншот»: перевод по нажатию на кнопку")
+        } else {
+            settings.translateMode = "live"
+            toast("Режим Live: перевод появляется сам, когда страница перестаёт двигаться. Нажатие — пауза")
+            if (settings.region == null) startSelection() else setLive(true)
+        }
+        updateButton()
+    }
+
+    // ---------------------------------------------------------------- режим Live
+    private fun setLive(on: Boolean) {
+        liveOn = on
+        main.removeCallbacks(liveTick)
+        prevThumb = null
+        baseThumb = null
+        liveShown = false
+        if (on) main.postDelayed(liveTick, 300)
+        updateButton()
+    }
+
+    /** Уменьшенная серая копия зоны — для сравнения кадров. */
+    private fun thumb(full: Bitmap, r: Rect): IntArray? {
+        val rr = Rect(r)
+        if (!rr.intersect(0, 0, full.width, full.height) || rr.width() < 10 || rr.height() < 10) return null
+        val crop = Bitmap.createBitmap(full, rr.left, rr.top, rr.width(), rr.height())
+        val w = 48
+        val h = maxOf(1, w * rr.height() / rr.width())
+        val small = Bitmap.createScaledBitmap(crop, w, h, true)
+        if (crop !== full && crop !== small) crop.recycle()
+        val px = IntArray(w * h)
+        small.getPixels(px, 0, w, 0, 0, w, h)
+        small.recycle()
+        return IntArray(px.size) { i ->
+            val c = px[i]
+            (android.graphics.Color.red(c) + android.graphics.Color.green(c) + android.graphics.Color.blue(c)) / 3
+        }
+    }
+
+    private fun diff(a: IntArray, b: IntArray): Float {
+        if (a.size != b.size) return 255f
+        var sum = 0L
+        for (i in a.indices) sum += kotlin.math.abs(a[i] - b[i])
+        return sum.toFloat() / a.size
+    }
+
+    /**
+     * Шаг Live: пока страница двигается — перевода нет; как только два кадра подряд совпали —
+     * переводим. Перевод держится, пока картинка не изменится (пользователь листает дальше).
+     */
+    private fun liveStep() {
+        if (!liveOn || busy || selectView != null || menu != null) return
+        val region = settings.region ?: return
+        val full = capturer?.capture() ?: return
+        val cur = thumb(full, region)
+        full.recycle()
+        if (cur == null) return
+        if (liveShown) {
+            val base = baseThumb
+            if (base == null) {
+                baseThumb = cur
+            } else if (diff(base, cur) > 6f) {
+                // страница сдвинулась — убираем старый перевод и ждём остановки
+                translationView?.clear()
+                liveShown = false
+                baseThumb = null
+                prevThumb = cur
+                updateButton()
+            }
+            return
+        }
+        val prev = prevThumb
+        prevThumb = cur
+        if (prev != null && diff(prev, cur) < 2.5f) {
+            translate(fromLive = true)
+        }
+    }
+
+    private fun translate(fromLive: Boolean = false) {
         val region = settings.region ?: return startSelection()
         val cap = capturer ?: return
         if (busy) return
@@ -303,19 +454,27 @@ class OverlayService : Service() {
                     PageResult(error = "Ошибка: ${e.message}")
                 }
                 crop.recycle()
-                main.post { showResult(res, r) }
+                main.post { showResult(res, r, fromLive) }
             }
         }, 220)
     }
 
-    private fun showResult(res: PageResult, region: Rect) {
+    private fun showResult(res: PageResult, region: Rect, fromLive: Boolean) {
         busy = false
         translationView?.show(res.bubbles, region, settings.maxFontSp)
+        if (fromLive && liveOn) {
+            // запоминаем кадр уже с переводом: дальше следим, не сдвинулась ли страница
+            liveShown = true
+            baseThumb = null
+        }
         updateButton()
+        val diag = if (res.ocrStats.isNotEmpty()) " (строк: ${res.ocrStats})" else ""
         when {
+            res.blankFrame -> { if (fromLive) setLive(false); toast(res.error) }
             res.error.isNotEmpty() -> toast(res.error)
-            res.bubbles.isEmpty() -> toast("Текст не найден в выделенной области")
-            res.bubbles.none { it.translation.isNotBlank() } -> toast("Нечего переводить")
+            fromLive -> {}   // в Live не мешаем чтению сообщениями
+            res.bubbles.isEmpty() -> toast("Текст не найден в выделенной области$diag")
+            res.bubbles.none { it.translation.isNotBlank() } -> toast("Нечего переводить$diag")
         }
     }
 

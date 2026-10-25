@@ -38,6 +38,10 @@ class Settings(ctx: Context) {
     var skipFreeText by bool("skip_free", false)
     var skipCut by bool("skip_cut", true)
     var maxFontSp by int("max_font_sp", 16)
+    /** Выделять зону по всей ширине экрана (задаётся только высота) */
+    var fullWidthSelect by bool("full_width_select", false)
+    /** shot — перевод по нажатию; live — автоматически, когда страница перестаёт двигаться */
+    var translateMode by str("translate_mode", "shot")
 
     var region: Rect?
         get() {

@@ -663,6 +663,7 @@ class Dropdown(ctx: Context, label: String, private val items: List<Item>, priva
 
     private fun choose(key: String) {
         current = key
+        render()
         setExpanded(false)
         onSelect(key)
     }
@@ -683,5 +684,53 @@ class Dropdown(ctx: Context, label: String, private val items: List<Item>, priva
         titleView.text = item.title
         subtitleView.text = item.subtitle
         rows.forEach { (k, v) -> v.setChecked(k == item.key) }
+    }
+}
+
+// ==================================================================== переключатель из двух-трёх вариантов
+
+/** Сегментированный переключатель для тёмной шапки (например, «Скриншот | Live»). */
+class Segmented(ctx: Context, private val options: List<Pair<String, String>>, selected: String,
+                private val onSelect: (String) -> Unit) : LinearLayout(ctx) {
+    private val views = LinkedHashMap<String, TextView>()
+    private var current = selected
+
+    init {
+        orientation = HORIZONTAL
+        val r = ctx.dpF(22f)
+        background = rounded(Color.argb(34, 255, 255, 255), r)
+        val pad = ctx.dp(4)
+        setPadding(pad, pad, pad, pad)
+        for ((key, label) in options) {
+            val tv = TextView(ctx).apply {
+                text = label
+                textSize = 14.5f
+                typeface = Fonts.medium
+                gravity = Gravity.CENTER
+                setPadding(0, ctx.dp(9), 0, ctx.dp(9))
+                isClickable = true
+                setOnClickListener { select(key, notify = true) }
+            }
+            views[key] = tv
+            addView(tv, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        }
+        render()
+    }
+
+    fun select(key: String, notify: Boolean = false) {
+        if (key == current && !notify) return
+        val changed = key != current
+        current = key
+        render()
+        if (notify && changed) onSelect(key)
+    }
+
+    private fun render() {
+        val r = context.dpF(18f)
+        for ((k, v) in views) {
+            val on = k == current
+            v.background = if (on) rounded(Brand.CREAM, r) else null
+            v.setTextColor(if (on) Brand.INK else Brand.CREAM)
+        }
     }
 }

@@ -8,7 +8,7 @@ import android.graphics.Bitmap
  * Хранит кэш переводов и последние реплики для контекста.
  */
 class Pipeline(private val ctx: Context) {
-    private val ocr = Ocr()
+    private val ocr = Ocr(ctx)
     private val cache = object : LinkedHashMap<String, String>(256, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 3000
     }
@@ -27,11 +27,18 @@ class Pipeline(private val ctx: Context) {
         val tgt = Languages.tgt(s.targetLang)
         val t0 = System.currentTimeMillis()
 
-        val lines = try {
+        if (isBlank(bitmap)) {
+            return PageResult(blankFrame = true, error = "Снимок области получился однотонным (обычно чёрным). " +
+                "Похоже, приложение-читалка запрещает снимки экрана — так делают некоторые официальные приложения. " +
+                "Откройте тайтл в браузере или другой читалке.")
+        }
+        val ocrRes = try {
             ocr.recognize(bitmap, src, s.ocrMode)
         } catch (e: OcrException) {
             return PageResult(error = e.message ?: "Ошибка распознавания")
         }
+        val lines = ocrRes.lines
+        val stats = ocrRes.stats.entries.joinToString(" · ") { (k, v) -> "${Ocr.scriptNames[k] ?: k} $v" }
         val img = PixelImage.fromBitmap(bitmap)
         val bubbles = Bubbles.group(lines, img, Bubbles.Params(
             joiner = src.joiner, rtl = src.rtl, gap = s.bubbleGap,
@@ -39,7 +46,7 @@ class Pipeline(private val ctx: Context) {
         ))
         for (b in bubbles) b.lang = Languages.detect(b.text, src).code
         val t1 = System.currentTimeMillis()
-        if (!translate) return PageResult(bubbles, ocrMs = t1 - t0, lineCount = lines.size)
+        if (!translate) return PageResult(bubbles, ocrMs = t1 - t0, lineCount = lines.size, ocrStats = stats)
 
         var hits = 0
         val todo = ArrayList<Bubble>()
@@ -62,7 +69,23 @@ class Pipeline(private val ctx: Context) {
                 error = "Ошибка перевода: ${e.message}"
             }
         }
-        return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size)
+        return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size, stats)
+    }
+
+    /** Однотонный кадр: разброс яркости почти нулевой. */
+    private fun isBlank(bmp: Bitmap): Boolean {
+        val small = Bitmap.createScaledBitmap(bmp, 32, maxOf(1, 32 * bmp.height / maxOf(1, bmp.width)), true)
+        val px = IntArray(small.width * small.height)
+        small.getPixels(px, 0, small.width, 0, 0, small.width, small.height)
+        if (small !== bmp) small.recycle()
+        var lo = 255
+        var hi = 0
+        for (c in px) {
+            val v = (android.graphics.Color.red(c) + android.graphics.Color.green(c) + android.graphics.Color.blue(c)) / 3
+            if (v < lo) lo = v
+            if (v > hi) hi = v
+        }
+        return hi - lo < 10
     }
 
     private fun key(s: Settings, text: String) =

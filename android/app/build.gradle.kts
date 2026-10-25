@@ -56,6 +56,8 @@ kotlin {
 
 dependencies {
     // Распознавание текста ML Kit через сервисы Google Play (модели не входят в APK)
+    // докачка модулей распознавания (ModuleInstallClient)
+    implementation("com.google.android.gms:play-services-base:18.5.0")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition-korean:16.0.1")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition-japanese:16.0.1")
