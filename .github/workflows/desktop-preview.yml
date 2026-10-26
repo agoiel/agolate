@@ -1,7 +1,8 @@
 name: Desktop UI preview
 
-# Запускает ПК-версию без экрана, снимает главное окно при разной ширине
-# и кладёт снимки в ветку ui-preview — чтобы проверить интерфейс без Windows.
+# Запускает ПК-версию, снимает главное окно и кликает по спискам —
+# на Linux без экрана и на настоящем Windows (с масштабом 125% и 150%).
+# Снимки кладутся в ветку ui-preview.
 on:
   push:
     branches: [main]
@@ -14,27 +15,63 @@ permissions:
   contents: write
 
 jobs:
-  preview:
+  linux:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 fonts-noto-core
           python -m pip install -q PySide6-Essentials numpy Pillow requests
-
       - name: Screenshots
         working-directory: desktop
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tools/ui_preview.py ../preview
+        run: python tools/ui_preview.py ../preview/linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shots-linux
+          path: preview
 
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scale: ["1", "1.25", "1.5"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -q PySide6-Essentials numpy Pillow requests
+      - name: Clicks on real Windows
+        working-directory: desktop
+        env:
+          QT_QPA_PLATFORM: windows
+          QT_SCALE_FACTOR: ${{ matrix.scale }}
+          PREVIEW_ONLY_CLICKS: "1"
+        run: python tools/ui_preview.py ../preview/win-${{ matrix.scale }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots-win-${{ matrix.scale }}
+          path: preview
+
+  publish:
+    needs: [linux, windows]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: preview
+          merge-multiple: true
       - name: Publish to ui-preview branch
         run: |
           cd preview

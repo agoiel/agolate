@@ -21,9 +21,28 @@ class Clickable(QFrame):
         self.setObjectName(name)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    def mousePressEvent(self, e):
+        # нажатие нужно «забрать», иначе отпускание кнопки мыши сюда не придёт
+        if e.button() == Qt.MouseButton.LeftButton:
+            e.accept()
+        else:
+            super().mousePressEvent(e)
+
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
             self.clicked.emit()
+
+
+def relayout(w: QWidget) -> None:
+    """Пересчитать высоту всех родителей — после того как что-то раскрылось или свернулось."""
+    p = w
+    while p is not None:
+        lay = p.layout()
+        if lay is not None:
+            lay.invalidate()
+            lay.activate()
+        p.updateGeometry()
+        p = p.parentWidget()
 
 
 def _repolish(w: QWidget) -> None:
@@ -77,7 +96,7 @@ class Card(QFrame):
                  collapsed: bool = False):
         super().__init__()
         self.setObjectName("card")
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(16, 14, 16, 16)
         outer.setSpacing(10)
@@ -133,6 +152,7 @@ class Card(QFrame):
 
     def _render_collapse(self) -> None:
         self.body.setVisible(self._open)
+        relayout(self.body)
         pm = theme.pixmap("chevron", theme.palette().primary, 22)
         if self._open:
             pm = pm.transformed(__import__("PySide6.QtGui", fromlist=["QTransform"]).QTransform().rotate(180))
@@ -197,8 +217,12 @@ class _Choice(QFrame):
         self.check.setPixmap(theme.pixmap("check", c.primary, 20) if on else QPixmap())
         _repolish(self)
 
-    def mouseReleaseEvent(self, e):
+    def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
+            e.accept()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
             self.clicked.emit()
 
 
@@ -261,6 +285,7 @@ class Dropdown(QFrame):
         self.setProperty("open", "true" if self.list.isVisible() else "false")
         _repolish(self)
         self._render_chevron()
+        relayout(self.list)
 
     def select(self, key: str) -> None:
         self.current = key
@@ -272,6 +297,7 @@ class Dropdown(QFrame):
         self.setProperty("open", "false")
         _repolish(self)
         self._render()
+        relayout(self.list)
         self.changed.emit(key)
 
     def _render(self) -> None:
@@ -414,8 +440,13 @@ class SwitchRow(QWidget):
         self.switch.toggled.connect(self.toggled)
         lay.addWidget(self.switch)
 
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            e.accept()
+
     def mouseReleaseEvent(self, e):
-        self.switch.toggle()
+        if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
+            self.switch.toggle()
 
 
 # ---------------------------------------------------------------- переключатель режимов в шапке
