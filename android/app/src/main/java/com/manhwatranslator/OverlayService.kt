@@ -93,7 +93,7 @@ class OverlayService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_RESET -> {
-                pipeline.reset()
+                pipeline.reset()   // контекст перечитается из памяти при следующем переводе
                 translationView?.clear()
                 updateButton()
                 return START_NOT_STICKY

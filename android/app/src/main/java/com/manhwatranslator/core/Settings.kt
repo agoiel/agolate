@@ -17,6 +17,10 @@ class Settings(ctx: Context) {
     /** Минимальная пауза между запросами к сервису перевода, секунды */
     var requestIntervalSec by float("request_interval", 1f)
     var glossary by str("glossary", "")
+    /** Активный тайтл (id) — его контекст сохраняется в памяти телефона. Пусто — без тайтла. */
+    var activeTitle by str("active_title", "")
+    /** manhwa — облака манхвы; screen — обычный текст на экране (статьи, игры, приложения) */
+    var contentMode by str("content_mode", "manhwa")
 
     var deeplKey by str("deepl_key", "")
     var microsoftKey by str("ms_key", "")

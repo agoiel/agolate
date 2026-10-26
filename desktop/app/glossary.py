@@ -65,7 +65,9 @@ class Glossary:
     def _pattern(e: GlossaryEntry) -> re.Pattern:
         """Термин ищется только в начале слова: «인형» (кукла) не совпадёт с «형».
         После термина могут идти частицы и окончания (선배님, 선배가, 길드에서)."""
-        return re.compile(r"(?<![^\W_])" + re.escape(e.source), re.IGNORECASE)
+        # английские термины — целым словом: «Gate» не должен совпасть с «Gatekeeper»
+        end = r"(?![^\W_])" if e.source[-1:].isascii() and e.source[-1:].isalpha() else ""
+        return re.compile(r"(?<![^\W_])" + re.escape(e.source) + end, re.IGNORECASE)
 
     def find(self, texts: list[str]) -> list[GlossaryEntry]:
         """Термины, которые встречаются в этих текстах."""

@@ -5,7 +5,8 @@ import android.graphics.Bitmap
 
 /**
  * Конвейер: картинка → строки (OCR) → облака → перевод.
- * Хранит кэш переводов и последние реплики для контекста.
+ * Хранит кэш переводов и последние реплики для контекста. Если выбран тайтл,
+ * контекст берётся из памяти телефона и сохраняется туда после каждого перевода.
  */
 class Pipeline(private val ctx: Context) {
     private val ocr = Ocr(ctx)
@@ -13,11 +14,41 @@ class Pipeline(private val ctx: Context) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 3000
     }
     private val history = ArrayDeque<Pair<String, String>>()
+    private var loadedTitle: String? = null
+    private var loadedStamp = 0L
 
     @Synchronized
     fun reset() {
         cache.clear()
         history.clear()
+        loadedTitle = null
+    }
+
+    /** Подгрузить контекст активного тайтла, если он сменился или изменился на диске. */
+    private fun syncTitle(s: Settings) {
+        val id = s.activeTitle
+        val stamp = if (id.isBlank()) 0L else TitleStore.file(ctx, id).lastModified()
+        if (id == loadedTitle && stamp == loadedStamp) return
+        cache.clear()
+        history.clear()
+        TitleStore.load(ctx, id)?.let { t ->
+            cache.putAll(t.cache)
+            history.addAll(t.history)
+        }
+        loadedTitle = id
+        loadedStamp = stamp
+    }
+
+    private fun persistTitle(s: Settings) {
+        val id = s.activeTitle
+        if (id.isBlank()) return
+        val t = TitleStore.load(ctx, id) ?: return
+        t.history.clear()
+        t.history.addAll(history)
+        t.cache.clear()
+        t.cache.putAll(cache)
+        TitleStore.save(ctx, t)
+        loadedStamp = TitleStore.file(ctx, id).lastModified()
     }
 
     /** Вызывать из фонового потока. */
@@ -25,7 +56,9 @@ class Pipeline(private val ctx: Context) {
     fun process(bitmap: Bitmap, s: Settings, translate: Boolean = true): PageResult {
         val src = Languages.src(s.sourceLang)
         val tgt = Languages.tgt(s.targetLang)
+        val screen = s.contentMode == "screen"
         val t0 = System.currentTimeMillis()
+        syncTitle(s)
 
         if (isBlank(bitmap)) {
             return PageResult(blankFrame = true, error = tr("Снимок области получился однотонным (обычно чёрным). Похоже, приложение-читалка запрещает снимки экрана — так делают некоторые официальные приложения. Откройте тайтл в браузере или другой читалке."))
@@ -38,11 +71,20 @@ class Pipeline(private val ctx: Context) {
         val lines = ocrRes.lines
         val stats = ocrRes.stats.entries.joinToString(" · ") { (k, v) -> "${Ocr.scriptName(k)} $v" }
         val img = PixelImage.fromBitmap(bitmap)
-        val bubbles = Bubbles.group(lines, img, Bubbles.Params(
-            joiner = src.joiner, rtl = src.rtl, gap = s.bubbleGap,
-            skipFreeText = s.skipFreeText, skipCut = s.skipCut,
-        ))
-        for (b in bubbles) b.lang = Languages.detect(b.text, src).code
+        val bubbles = if (screen) {
+            // обычный текст: строки собираются в абзацы, ничего не отбрасывается из-за фона или края
+            Bubbles.group(lines, img, Bubbles.Params(joiner = src.joiner, rtl = false, gap = 0.9f,
+                borderCheck = false, skipFreeText = false, skipCut = false))
+        } else {
+            Bubbles.group(lines, img, Bubbles.Params(
+                joiner = src.joiner, rtl = src.rtl, gap = s.bubbleGap,
+                skipFreeText = s.skipFreeText, skipCut = s.skipCut,
+            ))
+        }
+        for (b in bubbles) {
+            b.lang = Languages.detect(b.text, src).code
+            if (screen) b.kind = "screen"
+        }
         val t1 = System.currentTimeMillis()
         if (!translate) return PageResult(bubbles, ocrMs = t1 - t0, lineCount = lines.size, ocrStats = stats)
 
@@ -66,6 +108,7 @@ class Pipeline(private val ctx: Context) {
             } catch (e: Exception) {
                 error = trf("Ошибка перевода: %s", e.message)
             }
+            persistTitle(s)
         }
         return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size, stats)
     }
@@ -101,6 +144,7 @@ class Pipeline(private val ctx: Context) {
             texts = texts, src = src, tgt = tgt,
             history = if (n > 0) history.toList().takeLast(n) else emptyList(),
             glossary = found, anchored = anchored,
+            screen = s.contentMode == "screen",
         )
         val out = tr.translate(req)
         bubbles.forEachIndexed { i, b ->
@@ -109,7 +153,7 @@ class Pipeline(private val ctx: Context) {
             if (t.isNotBlank()) {
                 cache[key(s, b.text)] = t
                 history.addLast(b.text to t)
-                while (history.size > 50) history.removeFirst()
+                while (history.size > Title.MAX_HISTORY) history.removeFirst()
             }
         }
     }

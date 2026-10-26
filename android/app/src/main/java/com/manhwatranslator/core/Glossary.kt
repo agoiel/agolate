@@ -22,8 +22,12 @@ class Glossary(var name: String, var sourceLang: String = "", var entries: List<
      * Термин ищется только в начале слова: «인형» (кукла) не совпадёт с «형».
      * После термина могут идти частицы и окончания (선배님, 선배가, 길드에서).
      */
-    private fun pattern(e: GlossaryEntry) =
-        Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(e.source), RegexOption.IGNORE_CASE)
+    private fun pattern(e: GlossaryEntry): Regex {
+        // английские термины — целым словом: «Gate» не должен совпасть с «Gatekeeper»
+        val latinEnd = e.source.lastOrNull()?.let { it in 'a'..'z' || it in 'A'..'Z' } == true
+        val end = if (latinEnd) "(?![\\p{L}\\p{N}])" else ""
+        return Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(e.source) + end, RegexOption.IGNORE_CASE)
+    }
 
     fun find(texts: List<String>): List<GlossaryEntry> {
         val joined = texts.joinToString("\n")
@@ -108,20 +112,35 @@ object GlossaryStore {
      */
     fun installBundled(ctx: Context, settings: Settings) {
         val prefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("bundled_glossaries_v1", false)) return
+        val done = HashSet(prefs.getStringSet("bundled_installed", emptySet()) ?: emptySet())
+        // первая версия ставила только корейский
+        if (prefs.getBoolean("bundled_glossaries_v1", false)) done.add("universal_ko.json")
         try {
             for (name in ctx.assets.list("glossaries") ?: emptyArray()) {
+                if (name in done) continue
                 val target = File(dir(ctx), name)
                 if (!target.exists()) {
                     ctx.assets.open("glossaries/$name").use { inp -> target.outputStream().use { inp.copyTo(it) } }
                 }
+                done.add(name)
             }
-            if (settings.glossary.isBlank() && File(dir(ctx), "universal_ko.json").exists()) {
-                settings.glossary = "universal_ko.json"
-            }
+            if (settings.glossary.isBlank()) universalFor(ctx, settings.sourceLang)?.let { settings.glossary = it }
         } catch (_: Exception) {
         }
-        prefs.edit().putBoolean("bundled_glossaries_v1", true).apply()
+        prefs.edit().putStringSet("bundled_installed", done).apply()
+    }
+
+    /** Встроенный универсальный глоссарий для языка оригинала, если он есть. */
+    fun universalFor(ctx: Context, lang: String): String? {
+        val name = "universal_${lang.substringBefore('-')}.json"
+        return if (File(dir(ctx), name).exists()) name else null
+    }
+
+    /** При смене языка оригинала меняем универсальный глоссарий на подходящий (свои не трогаем). */
+    fun switchUniversal(ctx: Context, settings: Settings) {
+        val cur = settings.glossary
+        if (cur.isNotBlank() && !cur.startsWith("universal_")) return
+        settings.glossary = universalFor(ctx, settings.sourceLang) ?: ""
     }
 
     /** Имя файла из названия тайтла. */

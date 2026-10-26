@@ -33,6 +33,7 @@ import com.manhwatranslator.core.Ocr
 import com.manhwatranslator.core.PageResult
 import com.manhwatranslator.core.Pipeline
 import com.manhwatranslator.core.Settings
+import com.manhwatranslator.core.TitleStore
 import com.manhwatranslator.core.Translators
 import kotlin.concurrent.thread
 
@@ -57,6 +58,7 @@ class MainActivity : Activity() {
     private lateinit var srcPicker: PickerView
     private lateinit var tgtPicker: PickerView
     private lateinit var glossPicker: PickerView
+    private lateinit var titlePicker: PickerView
     private lateinit var keysBox: LinearLayout
     private lateinit var translatorDropdown: Dropdown
     private var lastRunning: Boolean? = null
@@ -203,7 +205,7 @@ class MainActivity : Activity() {
         val row = ui.horizontal().apply { gravity = Gravity.TOP }
         val tiles = listOf(
             Tile(this, tr("Перевести\nскриншот"), R.drawable.ic_image) { pickImage() },
-            Tile(this, tr("Новый\nтайтл"), R.drawable.ic_refresh) { resetSession() },
+            Tile(this, tr("Новый\nтайтл"), R.drawable.ic_refresh) { createTitle() },
             Tile(this, tr("Как\nпользоваться"), R.drawable.ic_help) { showHelp() },
         )
         tiles.forEachIndexed { i, t ->
@@ -224,6 +226,12 @@ class MainActivity : Activity() {
             .margins(this, 8, 0, 8, 0))
         row.addView(tgtPicker, lp(0, weight = 1f))
         card.addView(row, lp().margins(this, top = 14))
+        val content = Dropdown(this, tr("ЧТО ПЕРЕВОДИМ"), listOf(
+            Dropdown.Item("manhwa", tr("Манхва, манга, маньхуа"), tr("Облака с репликами, звуки, плашки"), ""),
+            Dropdown.Item("screen", tr("Текст на экране"), tr("Статьи, чаты, игры, приложения — перевод прямо поверх текста"), ""),
+        )) { s.contentMode = it }
+        content.select(s.contentMode)
+        card.addView(content, lp().margins(this, top = 12))
         renderLanguages()
         return card
     }
@@ -240,6 +248,8 @@ class MainActivity : Activity() {
             .setSingleChoiceItems(items, cur) { d, which ->
                 s.sourceLang = Languages.sources[which].code
                 Ocr.requestModules(this, Languages.src(s.sourceLang))
+                GlossaryStore.switchUniversal(this, s)
+                refreshGlossary()
                 renderLanguages()
                 d.dismiss()
             }.show()
@@ -352,12 +362,23 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------------------------------------------------------------- глоссарий
+    // ---------------------------------------------------------------- тайтл и глоссарий
     private fun buildGlossary(): View {
         val card = ui.card()
-        card.addView(ui.cardHeader(tr("Глоссарий тайтла"), R.drawable.ic_book, tr("Имена и термины — всегда одинаково")))
-        glossPicker = PickerView(this, tr("АКТИВНЫЙ ГЛОССАРИЙ")) { pickGlossary() }
-        card.addView(glossPicker, lp().margins(this, top = 14))
+        card.addView(ui.cardHeader(tr("Тайтл"), R.drawable.ic_book, tr("Контекст и глоссарий сохраняются для каждой манхвы")))
+        titlePicker = PickerView(this, tr("АКТИВНЫЙ ТАЙТЛ")) { pickTitle() }
+        card.addView(titlePicker, lp().margins(this, top = 14))
+        val trow = ui.horizontal()
+        val manage = PillButton(this, tr("Управление"), null, PillStyle.OUTLINE, 44)
+        manage.onClick { titleActions() }
+        val newTitle = PillButton(this, tr("Новый"), R.drawable.ic_plus, PillStyle.TONAL, 44)
+        newTitle.onClick { createTitle() }
+        trow.addView(manage, lp(0, weight = 1f))
+        trow.addView(newTitle, lp(0, weight = 1f).margins(this, start = 10))
+        card.addView(trow, lp().margins(this, top = 10))
+
+        glossPicker = PickerView(this, tr("ГЛОССАРИЙ")) { pickGlossary() }
+        card.addView(glossPicker, lp().margins(this, top = 16))
         val row = ui.horizontal()
         val edit = PillButton(this, tr("Изменить"), null, PillStyle.OUTLINE, 44)
         edit.onClick { openGlossary(s.glossary.ifBlank { null }) }
@@ -365,11 +386,19 @@ class MainActivity : Activity() {
         create.onClick { openGlossary(null) }
         row.addView(edit, lp(0, weight = 1f))
         row.addView(create, lp(0, weight = 1f).margins(this, start = 10))
-        card.addView(row, lp().margins(this, top = 12))
+        card.addView(row, lp().margins(this, top = 10))
         return card
     }
 
     private fun refreshGlossary() {
+        // глоссарий активного тайтла
+        TitleStore.load(this, s.activeTitle)?.let { t ->
+            if (t.glossary != s.glossary) s.glossary = t.glossary
+            titlePicker.setValue(trf("%s · %s реплик в памяти", t.name, t.history.size))
+        } ?: run {
+            if (s.activeTitle.isNotBlank()) s.activeTitle = ""
+            titlePicker.setValue(tr("Без тайтла — контекст только до выхода"))
+        }
         val g = s.glossary.takeIf { it.isNotBlank() }?.let { GlossaryStore.load(this, it) }
         if (g == null && s.glossary.isNotBlank()) s.glossary = ""
         glossPicker.setValue(g?.let { trf("%s · %s зап.", it.name.ifBlank { s.glossary }, it.entries.size) } ?: tr("Без глоссария"))
@@ -382,9 +411,98 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle(tr("Глоссарий"))
             .setSingleChoiceItems(names.toTypedArray(), cur) { d, which ->
                 s.glossary = if (which == 0) "" else files[which - 1]
+                // глоссарий запоминается за активным тайтлом
+                TitleStore.load(this, s.activeTitle)?.let { t -> t.glossary = s.glossary; TitleStore.save(this, t) }
                 refreshGlossary()
                 d.dismiss()
             }.show()
+    }
+
+    private fun pickTitle() {
+        val titles = TitleStore.list(this)
+        val names = listOf(tr("Без тайтла")) + titles.map { trf("%s · %s реплик", it.name, it.lines) }
+        val cur = titles.indexOfFirst { it.id == s.activeTitle } + 1
+        AlertDialog.Builder(this).setTitle(tr("Тайтл"))
+            .setSingleChoiceItems(names.toTypedArray(), cur) { d, which ->
+                selectTitle(if (which == 0) "" else titles[which - 1].id)
+                d.dismiss()
+            }
+            .setPositiveButton(tr("Новый")) { _, _ -> createTitle() }
+            .show()
+    }
+
+    private fun selectTitle(id: String) {
+        s.activeTitle = id
+        TitleStore.load(this, id)?.let { s.glossary = it.glossary }
+        notifyContextChanged()
+        refreshGlossary()
+    }
+
+    private fun askName(title: String, initial: String, onOk: (String) -> Unit) {
+        val f = Field(this, "", initial, tr("Например: мой любимый тайтл"))
+        val box = FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(f) }
+        AlertDialog.Builder(this).setTitle(title).setView(box)
+            .setPositiveButton(tr("Сохранить")) { _, _ ->
+                val name = f.edit.text.toString().trim()
+                if (name.isEmpty()) toast(tr("Введите название тайтла")) else onOk(name)
+            }
+            .setNegativeButton(tr("Отмена"), null)
+            .show()
+    }
+
+    private fun createTitle() {
+        askName(tr("Новый тайтл"), "") { name ->
+            val glossary = GlossaryStore.universalFor(this, s.sourceLang) ?: ""
+            val t = TitleStore.create(this, name, glossary)
+            selectTitle(t.id)
+            toast(trf("Тайтл «%s» создан. Контекст будет сохраняться в памяти телефона", name))
+        }
+    }
+
+    private fun titleActions() {
+        val t = TitleStore.load(this, s.activeTitle)
+        if (t == null) {
+            AlertDialog.Builder(this).setTitle(tr("Тайтл"))
+                .setMessage(tr("Сейчас тайтл не выбран: контекст хранится только до выхода из переводчика. Создайте тайтл, чтобы контекст и глоссарий сохранялись для каждой манхвы."))
+                .setPositiveButton(tr("Новый")) { _, _ -> createTitle() }
+                .setNeutralButton(tr("Очистить контекст")) { _, _ -> resetSession() }
+                .setNegativeButton(tr("Отмена"), null)
+                .show()
+            return
+        }
+        val actions = arrayOf(tr("Переименовать"), tr("Очистить контекст"), tr("Удалить тайтл"))
+        AlertDialog.Builder(this).setTitle(t.name)
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> askName(tr("Переименовать"), t.name) { name ->
+                        t.name = name
+                        TitleStore.save(this, t)
+                        refreshGlossary()
+                    }
+                    1 -> {
+                        TitleStore.clearContext(this, t.id)
+                        notifyContextChanged()
+                        refreshGlossary()
+                        toast(tr("Контекст тайтла очищен"))
+                    }
+                    2 -> AlertDialog.Builder(this).setTitle(tr("Удалить тайтл?"))
+                        .setMessage(tr("Сохранённые реплики и кэш переводов этого тайтла будут удалены. Глоссарий останется."))
+                        .setPositiveButton(tr("Удалить")) { _, _ ->
+                            TitleStore.delete(this, t.id)
+                            selectTitle("")
+                        }
+                        .setNegativeButton(tr("Отмена"), null)
+                        .show()
+                }
+            }.show()
+    }
+
+    /** Сообщить переводчику, что контекст поменялся (он перечитает его из памяти). */
+    private fun notifyContextChanged() {
+        testPipeline?.reset()
+        if (OverlayService.running) {
+            startService(Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_RESET))
+        }
     }
 
     private fun openGlossary(file: String?) {
@@ -563,10 +681,9 @@ class MainActivity : Activity() {
     }
 
     private fun resetSession() {
-        testPipeline?.reset()
-        if (OverlayService.running) {
-            startService(Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_RESET))
-        }
+        if (s.activeTitle.isNotBlank()) TitleStore.clearContext(this, s.activeTitle)
+        notifyContextChanged()
+        refreshGlossary()
         toast(tr("Контекст и кэш очищены — можно читать новый тайтл"))
     }
 

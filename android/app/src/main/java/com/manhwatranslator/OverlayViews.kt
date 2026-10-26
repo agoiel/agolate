@@ -237,14 +237,18 @@ class PlateRenderer(private val ctx: Context) {
     fun draw(c: Canvas, bubbles: List<Bubble>, ox: Float, oy: Float, maxFontPx: Float, scale: Float = 1f) {
         for (b in bubbles) {
             if (b.translation.isBlank()) continue
-            val pad = max(ctx.dpF(3f) * scale, 0.35f * b.lineHeight)
-            // русский текст длиннее корейского — даём плашке стать шире
-            val w = max(max(b.box.w + 2 * pad, b.box.w * 1.3f), ctx.dpF(48f) * scale)
+            val screen = b.kind == "screen"
+            val pad = if (screen) ctx.dpF(2f) * scale else max(ctx.dpF(3f) * scale, 0.35f * b.lineHeight)
+            // в манхве русский текст длиннее корейского — даём плашке стать шире;
+            // обычный текст на экране закрываем точно по месту
+            val w = if (screen) max(b.box.w + 2 * pad, ctx.dpF(24f) * scale)
+            else max(max(b.box.w + 2 * pad, b.box.w * 1.3f), ctx.dpF(48f) * scale)
             var h = b.box.h + 2 * pad
             val cx = ox + b.box.cx
             val cy = oy + b.box.cy
             val textW = max(10, (w - 2 * ctx.dpF(3f) * scale).toInt())
-            val maxSize = maxFontPx * scale
+            // на экране шрифт подбираем под высоту исходной строки
+            val maxSize = if (screen) min(maxFontPx * scale, max(b.lineHeight * 0.9f, ctx.dpF(9f) * scale)) else maxFontPx * scale
             var size = maxSize
             var layout = makeLayout(b.translation, textW, size)
             while (layout.height > h - ctx.dpF(4f) * scale && size > minFontPx * scale) {
@@ -256,14 +260,17 @@ class PlateRenderer(private val ctx: Context) {
             val rect = RectF(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
             val bg = b.bgColor
             val lum = 0.299 * Color.red(bg) + 0.587 * Color.green(bg) + 0.114 * Color.blue(bg)
-            if (b.kind == "free") {
+            if (screen) {
+                fill.color = Color.argb(250, Color.red(bg), Color.green(bg), Color.blue(bg))
+                paint.color = if (lum > 140) Color.rgb(15, 15, 15) else Color.rgb(250, 250, 250)
+            } else if (b.kind == "free") {
                 fill.color = Color.argb(235, 20, 20, 20)
                 paint.color = Color.WHITE
             } else {
                 fill.color = Color.argb(255, Color.red(bg), Color.green(bg), Color.blue(bg))
                 paint.color = if (lum > 140) Color.rgb(15, 15, 15) else Color.rgb(250, 250, 250)
             }
-            val radius = ctx.dpF(8f) * scale
+            val radius = ctx.dpF(if (screen) 3f else 8f) * scale
             c.drawRoundRect(rect, radius, radius, fill)
             c.save()
             c.translate(rect.left + (w - textW) / 2, rect.top + (h - layout.height) / 2)

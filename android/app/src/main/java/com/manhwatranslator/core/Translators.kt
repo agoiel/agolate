@@ -16,6 +16,8 @@ class TranslateRequest(
     val glossary: List<GlossaryEntry> = emptyList(),
     /** тексты с подставленными якорями (для обычных переводчиков) */
     val anchored: List<String>? = null,
+    /** обычный текст с экрана, а не облака манхвы */
+    val screen: Boolean = false,
 )
 
 /** Код языка для сервиса; пустой — сервис этот язык не поддерживает. */
@@ -212,7 +214,21 @@ class MicrosoftTranslator(private val key: String, private val region: String) :
 // ==================================================================== ИИ-переводчики
 
 object LlmPrompt {
-    fun system(req: TranslateRequest): String = """
+    fun system(req: TranslateRequest): String = if (req.screen) screenSystem(req) else manhwaSystem(req)
+
+    private fun screenSystem(req: TranslateRequest): String = """
+You translate text captured from a phone screen (apps, articles, chats, games, menus) from ${req.src.llm} into ${req.tgt.llm}.
+
+Rules:
+- The fragments are separate blocks of text in reading order. Translate each one accurately and naturally.
+- The text comes from OCR and may contain recognition errors or broken line wraps. Silently fix obvious errors.
+- Keep short UI labels short. Keep numbers, names, usernames, links and code as they are.
+- Always use the glossary translations for names and terms.
+- Do not add notes or explanations. Do not merge or split fragments.
+- Answer ONLY with JSON: {"translations": ["...", "..."]} — exactly ${req.texts.size} strings in the same order.
+""".trim()
+
+    private fun manhwaSystem(req: TranslateRequest): String = """
 You are an experienced translator of webtoons, manhwa, manga and manhua.
 Translate speech bubbles from ${req.src.llm} into ${req.tgt.llm}.
 
