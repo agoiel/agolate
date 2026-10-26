@@ -169,6 +169,9 @@ class ScrollContent(QWidget):
         h = max(h, lay.totalSizeHint().height(), lay.totalMinimumSize().height())
         if h != self.minimumHeight():
             self.setMinimumHeight(h)
+        # заново разложить всё содержимое под текущий размер окна
+        lay.invalidate()
+        lay.activate()
 
     def schedule(self) -> None:
         if not self._pending:
@@ -883,7 +886,7 @@ class Columns(QWidget):
             cl.setSpacing(14)
             cl.setAlignment(Qt.AlignmentFlag.AlignTop)
             self.cols.append(col)
-            self.lay.addWidget(col, 1, Qt.AlignmentFlag.AlignTop)
+            self.lay.addWidget(col, 1)
         self._n = 0
         self._arrange(1)
 

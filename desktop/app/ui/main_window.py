@@ -344,11 +344,12 @@ class MainWindow(QWidget):
     def _render_keys(self) -> None:
         while self.keys_lay.count():
             it = self.keys_lay.takeAt(0)
-            if it.widget():
+            w = it.widget() if it is not None else None
+            if w is not None:
                 # сразу убрать из окна, иначе старая подсказка на миг рисуется поверх новых полей
-                it.widget().hide()
-                it.widget().setParent(None)
-                it.widget().deleteLater()
+                w.hide()
+                w.setParent(None)
+                w.deleteLater()
         name = self.cfg["translator"]
         t = self.cfg["translators"].setdefault(name, {})
 

@@ -62,6 +62,15 @@ def report(tag, dd):
         f"title h={dd.title.height()} sub y={dd.subtitle.y()} h={dd.subtitle.height()} dropdown={dd.height()} "
         f"list area visible={pop.isVisible()} h={pop.height()} "
         f"list need={dd.list.sizeHint().height()} got={dd.list.height()}")
+    chain = []
+    w = dd.parentWidget()
+    while w is not None and w is not win:
+        lay = w.layout()
+        hfw = lay.totalHeightForWidth(w.width()) if lay is not None and lay.hasHeightForWidth() else -1
+        hint = lay.totalSizeHint().height() if lay is not None else w.sizeHint().height()
+        chain.append(f"{type(w).__name__}#{w.objectName()} h={w.height()} hfw={hfw} hint={hint} min={w.minimumHeight()}")
+        w = w.parentWidget()
+    log("    chain: " + " | ".join(chain[:9]))
 
 
 def squeezed(tag):
