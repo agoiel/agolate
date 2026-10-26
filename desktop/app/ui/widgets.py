@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import (Property, QEasingCurve, QEvent, QPoint, QPropertyAnimation, QRect, QRectF, QSize, Qt,
-                            QTimer, Signal)
+                            QTimer, QVariantAnimation, Signal)
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (QAbstractButton, QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLayout,
                                QLineEdit, QPushButton, QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget)
@@ -45,6 +45,106 @@ def relayout(w: QWidget) -> None:
         if isinstance(p, ScrollContent):
             p.schedule()
         p = p.parentWidget()
+
+
+MAX_H = 16777215
+
+
+def outer_scroll(w: QWidget) -> QScrollArea | None:
+    """Ближайшее окно прокрутки снаружи (не считая собственного списка виджета)."""
+    p = w.parentWidget()
+    while p is not None:
+        if isinstance(p, QScrollArea) and p.objectName() != "dropListArea":
+            return p
+        p = p.parentWidget()
+    return None
+
+
+def scroll_into_view(w: QWidget, margin: int = 16) -> None:
+    """Плавно прокрутить окно так, чтобы виджет был виден целиком (или хотя бы его верх)."""
+    sa = outer_scroll(w)
+    if sa is None or sa.widget() is None:
+        return
+    bar = sa.verticalScrollBar()
+    top = w.mapTo(sa.widget(), QPoint(0, 0)).y() - margin
+    bottom = top + w.height() + 2 * margin
+    view = sa.viewport().height()
+    cur = bar.value()
+    if top < cur:
+        target = top
+    elif bottom > cur + view:
+        target = min(top, bottom - view)
+    else:
+        return
+    target = max(bar.minimum(), min(bar.maximum(), target))
+    anim = QPropertyAnimation(bar, b"value", bar)
+    anim.setDuration(260)
+    anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+    anim.setStartValue(cur)
+    anim.setEndValue(target)
+    anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+
+class HeightAnimator:
+    """Плавно раскрывает и сворачивает виджет по высоте; соседи сдвигаются вместе с ним."""
+
+    def __init__(self, target: QWidget, owner: QWidget, duration: int = 240):
+        self.w = target
+        self.owner = owner
+        self.anim = QVariantAnimation(owner)
+        self.anim.setDuration(duration)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.anim.valueChanged.connect(self._step)
+        self.anim.finished.connect(self._done)
+        self._opening = False
+        self._keep_fixed = False
+
+    def _step(self, v) -> None:
+        self.w.setFixedHeight(int(v))
+        relayout(self.w)
+
+    def open(self, height: int, keep_fixed: bool = False) -> None:
+        """height — до какой высоты раскрыть; keep_fixed — оставить её постоянной (для списка)."""
+        self.anim.stop()
+        start = self.w.height() if self.w.isVisible() else 0
+        self._opening = True
+        self._keep_fixed = keep_fixed
+        self.w.setFixedHeight(start)
+        self.w.setVisible(True)
+        self.anim.setStartValue(start)
+        self.anim.setEndValue(max(1, height))
+        self.anim.start()
+
+    def close(self) -> None:
+        self.anim.stop()
+        if not self.w.isVisible():
+            return
+        self._opening = False
+        self.anim.setStartValue(self.w.height())
+        self.anim.setEndValue(0)
+        self.anim.start()
+
+    def _done(self) -> None:
+        if self._opening:
+            if not self._keep_fixed:
+                self.w.setMinimumHeight(0)
+                self.w.setMaximumHeight(MAX_H)
+            relayout(self.w)
+            scroll_into_view(self.owner)
+        else:
+            self.w.setVisible(False)
+            self.w.setMinimumHeight(0)
+            self.w.setMaximumHeight(MAX_H)
+            relayout(self.w)
+
+
+def natural_height(w: QWidget, width: int) -> int:
+    lay = w.layout()
+    if lay is None:
+        return w.sizeHint().height()
+    lay.activate()
+    h = lay.totalHeightForWidth(width) if lay.hasHeightForWidth() else -1
+    return max(h, lay.totalSizeHint().height())
 
 
 class ScrollContent(QWidget):
@@ -216,7 +316,9 @@ class Card(QFrame):
             btn.clicked.connect(self.toggle)
             outer.addWidget(btn)
             self._open = not collapsed
-            self._render_collapse()
+            self.body.setVisible(self._open)
+            self._anim = HeightAnimator(self.body, self)
+            self._render_chev()
         else:
             outer.addWidget(head)
         outer.addWidget(self.body)
@@ -229,11 +331,14 @@ class Card(QFrame):
 
     def toggle(self) -> None:
         self._open = not self._open
-        self._render_collapse()
+        if self._open:
+            m = self.layout().contentsMargins()
+            self._anim.open(natural_height(self.body, self.width() - m.left() - m.right()))
+        else:
+            self._anim.close()
+        self._render_chev()
 
-    def _render_collapse(self) -> None:
-        self.body.setVisible(self._open)
-        relayout(self.body)
+    def _render_chev(self) -> None:
         pm = theme.pixmap("chevron", theme.palette().primary, 22)
         if self._open:
             pm = pm.transformed(__import__("PySide6.QtGui", fromlist=["QTransform"]).QTransform().rotate(180))
@@ -307,43 +412,9 @@ class _Choice(QFrame):
             self.clicked.emit()
 
 
-class _DropPopup(QFrame):
-    """Выпадающий список — отдельное всплывающее окно под полем, как у обычных списков Windows.
-
-    Окно не зависит от раскладки главного окна, поэтому ничего не сдвигает и не сжимает.
-    """
-
-    closed = Signal()
-
-    def __init__(self, owner: QWidget, content: QWidget):
-        super().__init__(owner, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
-                         | Qt.WindowType.NoDropShadowWindowHint)
-        self.setObjectName("dropPopup")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(4, 6, 4, 6)
-        self.area = QScrollArea()
-        self.area.setObjectName("dropPopupArea")
-        self.area.setWidgetResizable(True)
-        self.area.setFrameShape(QFrame.Shape.NoFrame)
-        self.area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.area.setWidget(content)
-        content.setObjectName("dropPopupContent")
-        lay.addWidget(self.area)
-
-    def hideEvent(self, e):
-        super().hideEvent(e)
-        self.closed.emit()
-
-    def keyPressEvent(self, e):
-        if e.key() == Qt.Key.Key_Escape:
-            self.hide()
-        else:
-            super().keyPressEvent(e)
-
-
 class Dropdown(QFrame):
-    """Поле выбора: по нажатию под ним выпадает список с описанием каждого варианта."""
+    """Поле выбора. По нажатию список плавно раскрывается прямо в карточке, соседние карточки
+    сдвигаются, а если вариантов много — список прокручивается внутри. Сворачивается так же плавно."""
 
     changed = Signal(str)
 
@@ -353,7 +424,7 @@ class Dropdown(QFrame):
         self.setObjectName("dropdown")
         self.items = items
         self.current = current
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._open = False
         lay = QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(0)
@@ -377,8 +448,9 @@ class Dropdown(QFrame):
         lay.addWidget(self.header)
 
         self.list = QWidget()
+        self.list.setObjectName("dropListContent")
         ll = QVBoxLayout(self.list)
-        ll.setContentsMargins(4, 0, 6, 0)
+        ll.setContentsMargins(8, 2, 8, 10)
         ll.setSpacing(6)
         self.choices: dict[str, _Choice] = {}
         group = None
@@ -391,49 +463,47 @@ class Dropdown(QFrame):
             self.choices[key] = ch
             ll.addWidget(ch)
         ll.addStretch(1)
-        # список получает свою полную высоту, а не минимально возможную
         self.list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
-        self.popup = _DropPopup(self, self.list)
-        self.popup.closed.connect(self._on_closed)
+
+        self.area = QScrollArea()
+        self.area.setObjectName("dropListArea")
+        self.area.setWidgetResizable(True)
+        self.area.setFrameShape(QFrame.Shape.NoFrame)
+        self.area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.area.setWidget(self.list)
+        self.area.setVisible(False)
+        lay.addWidget(self.area)
+        self._anim = HeightAnimator(self.area, self)
         self._render()
 
     def is_open(self) -> bool:
-        return self.popup.isVisible()
+        return self._open
 
     def toggle(self) -> None:
-        if self.popup.isVisible():
-            self.popup.hide()
+        if self._open:
+            self.close_list()
         else:
-            self.open()
+            self.open_list()
 
-    def open(self) -> None:
-        w = max(self.width(), 300)
-        need = self.list.layout().totalHeightForWidth(w - 26) if self.list.layout().hasHeightForWidth() else -1
-        need = max(need, self.list.sizeHint().height()) + 14
-        top_left = self.mapToGlobal(QPoint(0, self.height() + 4))
-        screen = self.screen().availableGeometry()
-        below = screen.bottom() - top_left.y() - 8
-        above = self.mapToGlobal(QPoint(0, 0)).y() - screen.top() - 12
-        if below >= min(need, 260) or below >= above:
-            h = min(need, below)
-            pos = top_left
-        else:
-            h = min(need, above)
-            pos = self.mapToGlobal(QPoint(0, -h - 4))
-        self.popup.setFixedSize(w, max(h, 120))
-        self.popup.move(pos)
-        self.setProperty("open", "true")
-        _repolish(self)
-        self._render_chevron()
-        self.popup.show()
+    def open_list(self) -> None:
+        self._open = True
+        need = natural_height(self.list, max(self.width() - 16, 200))
+        # список вытягивает свою карточку примерно вдвое; что не поместилось — прокручивается
+        card = self.parentWidget()
+        while card is not None and card.objectName() != "card":
+            card = card.parentWidget()
+        base = card.height() if card is not None else self.height() * 3
+        limit = max(300, min(base, 520))
+        self._anim.open(min(need, limit), keep_fixed=True)
         ch = self.choices.get(self.current)
         if ch is not None:
-            self.popup.area.ensureWidgetVisible(ch, 0, 12)
+            QTimer.singleShot(0, lambda: self.area.ensureWidgetVisible(ch, 0, 40))
+        self._render_state()
 
-    def _on_closed(self) -> None:
-        self.setProperty("open", "false")
-        _repolish(self)
-        self._render_chevron()
+    def close_list(self) -> None:
+        self._open = False
+        self._anim.close()
+        self._render_state()
 
     def select(self, key: str) -> None:
         self.current = key
@@ -441,16 +511,20 @@ class Dropdown(QFrame):
 
     def _choose(self, key: str) -> None:
         self.current = key
-        self.popup.hide()
+        self.close_list()
         self._render()
         self.changed.emit(key)
+
+    def _render_state(self) -> None:
+        self.setProperty("open", "true" if self._open else "false")
+        _repolish(self)
+        self._render_chevron()
 
     def _render(self) -> None:
         item = next((i for i in self.items if i[0] == self.current), self.items[0])
         self.title.setText(item[1])
         self.subtitle.setText(item[2])
         self.subtitle.setVisible(bool(item[2]))
-        self.setToolTip(item[2])
         for k, ch in self.choices.items():
             ch.set_checked(k == item[0])
         self._render_chevron()
@@ -458,7 +532,7 @@ class Dropdown(QFrame):
     def _render_chevron(self) -> None:
         from PySide6.QtGui import QTransform
         pm = theme.pixmap("chevron", theme.palette().primary, 22)
-        if self.popup.isVisible():
+        if self._open:
             pm = pm.transformed(QTransform().rotate(180))
         self.chev.setPixmap(pm)
 

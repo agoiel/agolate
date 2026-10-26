@@ -57,10 +57,10 @@ LOG = []
 def report(tag, dd):
     """Сколько места нужно заголовку и сколько он получил — если меньше, текст наезжает."""
     h = dd.header
-    pop = dd.popup
+    pop = dd.area
     log(f"[{tag}] header need={h.minimumSizeHint().height()}/{h.sizeHint().height()} got={h.height()} "
         f"title h={dd.title.height()} sub y={dd.subtitle.y()} h={dd.subtitle.height()} dropdown={dd.height()} "
-        f"popup visible={pop.isVisible()} size={pop.width()}x{pop.height()} "
+        f"list area visible={pop.isVisible()} h={pop.height()} "
         f"list need={dd.list.sizeHint().height()} got={dd.list.height()}")
 
 
@@ -106,31 +106,39 @@ translator = next(d for d in win.findChildren(Dropdown) if "deepl" in d.choices)
 show(translator)
 squeezed("start")
 report("before", translator)
-click(translator.header)
+
+
+def record(name, action, ms=420, step=30):
+    """Снять кадры анимации в GIF."""
+    from PIL import Image
+    frames = []
+    action()
+    for _ in range(ms // step):
+        QTest.qWait(step)
+        img = win.grab().toImage()
+        frames.append(Image.fromqimage(img).convert("RGB").resize((img.width() // 2, img.height() // 2)))
+    QTest.qWait(300)
+    settle()
+    frames.append(Image.fromqimage(win.grab().toImage()).convert("RGB").resize(frames[0].size))
+    frames[0].save(out / f"{name}.gif", save_all=True, append_images=frames[1:], duration=step, loop=0)
+
+
+record("anim_translator_open", lambda: click(translator.header))
 report("opened", translator)
+squeezed("list open")
 win.grab().save(str(out / "click_translator_open.png"))
-translator.popup.grab().save(str(out / "click_translator_popup.png"))
-try:
-    app.primaryScreen().grabWindow(0).save(str(out / "click_translator_screen.png"))
-except Exception as e:  # noqa: BLE001
-    log(f"screen grab failed: {e}")
 choice = translator.choices["deepl"]
-translator.popup.area.ensureWidgetVisible(choice)
+translator.area.ensureWidgetVisible(choice)
 settle()
-click(choice)
-log(f"chosen: {translator.current} popup visible after choose: {translator.popup.isVisible()}")
+record("anim_translator_choose", lambda: click(choice))
+log(f"chosen: {translator.current} list visible after choose: {translator.area.isVisible()}")
 report("chosen", translator)
 squeezed("after choosing DeepL")
 win.grab().save(str(out / "click_translator_chosen.png"))
-# второй раз — открыть и закрыть повторным нажатием (Esc)
-click(translator.header)
-QTest.keyClick(translator.popup, Qt.Key.Key_Escape)
-settle()
-log(f"after esc popup visible: {translator.popup.isVisible()}")
 cards = [c for c in win.findChildren(Card) if hasattr(c, "chevron")]
 collapse_heads = [w for w in cards[0].findChildren(Clickable) if w.objectName() == "collapseHeader"]
 show(cards[0])
-click(collapse_heads[0])
+record("anim_tuning_open", lambda: click(collapse_heads[0]))
 show(cards[0])
 log(f"tuning open: {cards[0].body.isVisible()}")
 squeezed("tuning open")
@@ -138,7 +146,10 @@ for c in cards[1:]:
     hd = [w for w in c.findChildren(Clickable) if w.objectName() == "collapseHeader"][0]
     show(c)
     click(hd)
+    QTest.qWait(400)
 squeezed("all cards open")
+record("anim_tuning_close", lambda: click(collapse_heads[0]))
+squeezed("tuning closed")
 win.resize(420, 760)
 QTest.qWait(400)
 settle()
@@ -165,6 +176,7 @@ for mode in ("light", "dark"):
         for card in win.findChildren(Card):
             if hasattr(card, "chevron"):
                 card.toggle()
+        QTest.qWait(500)
         shot(win, "light_expanded", 1100, 2600)
     else:
         shot(win, "dark_wide", 1100, 1500)

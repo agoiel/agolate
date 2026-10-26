@@ -118,8 +118,7 @@ QFrame#dropdown {{ background: {c.surface_alt}; border: 1px solid {c.border}; bo
 QFrame#dropdown[open="true"] {{ background: {c.surface}; border: 2px solid {c.primary}; }}
 QFrame#dropHeader {{ background: transparent; border: none; border-radius: 12px; }}
 QFrame#dropHeader:hover {{ background: {c.hover}; }}
-QFrame#dropPopup {{ background: {c.surface}; border: 2px solid {c.primary}; border-radius: 12px; }}
-QScrollArea#dropPopupArea, QWidget#dropPopupContent {{ background: transparent; }}
+QScrollArea#dropListArea, QWidget#dropListContent {{ background: transparent; }}
 QFrame#choice {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 12px; }}
 QFrame#choice:hover {{ border-color: {c.primary}; }}
 QFrame#choice[checked="true"] {{ background: {c.selected}; border: 2px solid {c.primary}; }}
