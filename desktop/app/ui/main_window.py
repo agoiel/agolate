@@ -17,7 +17,7 @@ from PySide6.QtCore import QObject, QRect, QRunnable, QSize, Qt, QThreadPool, QT
 from PySide6.QtGui import QDesktopServices, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
                                QInputDialog, QLabel, QMenu, QMessageBox, QScrollArea, QTextBrowser,
-                               QVBoxLayout, QWidget)
+                               QSizePolicy, QVBoxLayout, QWidget)
 
 from .. import __version__, languages, titles
 from ..capture import Region, grab_region
@@ -169,6 +169,8 @@ class MainWindow(QWidget):
         """Собрать содержимое окна (заново — при смене темы)."""
         content = QWidget()
         content.setObjectName("content")
+        # окно прокрутки отдаёт содержимому его полную высоту, а не минимальную — иначе тексты наезжают
+        content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         v = QVBoxLayout(content)
         v.setContentsMargins(0, 0, 0, 20)
         v.setSpacing(0)

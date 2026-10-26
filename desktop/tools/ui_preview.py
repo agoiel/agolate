@@ -44,10 +44,11 @@ LOG = []
 def report(tag, dd):
     """Сколько места нужно заголовку и сколько он получил — если меньше, текст наезжает."""
     h = dd.header
+    pop = dd.popup
     log(f"[{tag}] header need={h.minimumSizeHint().height()}/{h.sizeHint().height()} got={h.height()} "
-          f"title y={dd.title.y()} h={dd.title.height()} sub y={dd.subtitle.y()} h={dd.subtitle.height()} "
-          f"list visible={dd.list.isVisible()} need={dd.list.sizeHint().height()} got={dd.list.height()} "
-          f"dropdown got={dd.height()}")
+        f"title h={dd.title.height()} sub y={dd.subtitle.y()} h={dd.subtitle.height()} dropdown={dd.height()} "
+        f"popup visible={pop.isVisible()} size={pop.width()}x{pop.height()} "
+        f"list need={dd.list.sizeHint().height()} got={dd.list.height()}")
 
 
 def log(msg):
@@ -81,13 +82,23 @@ report("before", translator)
 click(translator.header)
 report("opened", translator)
 win.grab().save(str(out / "click_translator_open.png"))
-log(f"translator list visible: {translator.list.isVisible()} height: {translator.list.height()}")
-# выбрать другой переводчик кликом по пункту
+translator.popup.grab().save(str(out / "click_translator_popup.png"))
+try:
+    app.primaryScreen().grabWindow(0).save(str(out / "click_translator_screen.png"))
+except Exception as e:  # noqa: BLE001
+    log(f"screen grab failed: {e}")
 choice = translator.choices["deepl"]
+translator.popup.area.ensureWidgetVisible(choice)
+settle()
 click(choice)
-win.grab().save(str(out / "click_translator_chosen.png"))
-log(f"chosen: {translator.current} list visible after choose: {translator.list.isVisible()}")
+log(f"chosen: {translator.current} popup visible after choose: {translator.popup.isVisible()}")
 report("chosen", translator)
+win.grab().save(str(out / "click_translator_chosen.png"))
+# второй раз — открыть и закрыть повторным нажатием (Esc)
+click(translator.header)
+QTest.keyClick(translator.popup, Qt.Key.Key_Escape)
+settle()
+log(f"after esc popup visible: {translator.popup.isVisible()}")
 cards = [c for c in win.findChildren(Card) if hasattr(c, "chevron")]
 collapse_heads = [w for w in cards[0].findChildren(Clickable) if w.objectName() == "collapseHeader"]
 show(cards[0])
@@ -111,10 +122,7 @@ for mode in ("light", "dark"):
         shot(win, "light_wide", 1100, 1500)
         shot(win, "light_medium", 760, 1700)
         shot(win, "light_narrow", 380, 2600)
-        # раскрытые списки и свёрнутые карточки
-        for dd in win.findChildren(Dropdown):
-            if dd.title.text() in ("Google", "Яндекс") or "Google" in dd.title.text():
-                dd.toggle()
+        # раскрытые карточки
         for card in win.findChildren(Card):
             if hasattr(card, "chevron"):
                 card.toggle()

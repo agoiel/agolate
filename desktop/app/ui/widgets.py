@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import (Property, QEasingCurve, QPoint, QPropertyAnimation, QRect, QRectF, QSize, Qt,
-                            Signal)
+from PySide6.QtCore import (Property, QEasingCurve, QEvent, QPoint, QPropertyAnimation, QRect, QRectF, QSize, Qt,
+                            QTimer, Signal)
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (QAbstractButton, QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLayout,
-                               QLineEdit, QPushButton, QSizePolicy, QToolButton, QVBoxLayout, QWidget)
+                               QLineEdit, QPushButton, QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget)
 
 from . import theme
 
@@ -56,6 +56,46 @@ def label(text: str, name: str = "", wrap: bool = True) -> QLabel:
         lb.setObjectName(name)
     lb.setWordWrap(wrap)
     return lb
+
+
+class ElideLabel(QLabel):
+    """Метка в одну строку: если не помещается, обрезается многоточием (полный текст — в подсказке)."""
+
+    def __init__(self, text: str = "", name: str = ""):
+        super().__init__()
+        if name:
+            self.setObjectName(name)
+        self._full = ""
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full = text
+        self._elide()
+
+    def text(self) -> str:
+        return self._full
+
+    def _elide(self) -> None:
+        shown = self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideRight, max(self.width(), 40))
+        super().setText(shown)
+        self.setToolTip(self._full if shown != self._full else "")
+
+    def sizeHint(self):
+        return QSize(self.fontMetrics().horizontalAdvance(self._full) + 4, super().sizeHint().height())
+
+    def minimumSizeHint(self):
+        return QSize(40, super().minimumSizeHint().height())
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._elide()
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        if e.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._elide()
+            self.updateGeometry()
 
 
 def caption(text: str) -> QLabel:
@@ -114,9 +154,9 @@ class Card(QFrame):
             hl.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         col = QVBoxLayout()
         col.setSpacing(0)
-        col.addWidget(label(title, "cardTitle"))
+        col.addWidget(ElideLabel(title, "cardTitle"))
         if subtitle:
-            col.addWidget(label(subtitle, "cardSubtitle"))
+            col.addWidget(ElideLabel(subtitle, "cardSubtitle"))
         hl.addLayout(col, 1)
 
         self.body = QWidget()
@@ -226,8 +266,43 @@ class _Choice(QFrame):
             self.clicked.emit()
 
 
+class _DropPopup(QFrame):
+    """Выпадающий список — отдельное всплывающее окно под полем, как у обычных списков Windows.
+
+    Окно не зависит от раскладки главного окна, поэтому ничего не сдвигает и не сжимает.
+    """
+
+    closed = Signal()
+
+    def __init__(self, owner: QWidget, content: QWidget):
+        super().__init__(owner, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.NoDropShadowWindowHint)
+        self.setObjectName("dropPopup")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 6, 4, 6)
+        self.area = QScrollArea()
+        self.area.setObjectName("dropPopupArea")
+        self.area.setWidgetResizable(True)
+        self.area.setFrameShape(QFrame.Shape.NoFrame)
+        self.area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.area.setWidget(content)
+        content.setObjectName("dropPopupContent")
+        lay.addWidget(self.area)
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self.closed.emit()
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key.Key_Escape:
+            self.hide()
+        else:
+            super().keyPressEvent(e)
+
+
 class Dropdown(QFrame):
-    """Поле выбора, которое по нажатию раскрывается в список прямо в окне (как в Android-версии)."""
+    """Поле выбора: по нажатию под ним выпадает список с описанием каждого варианта."""
 
     changed = Signal(str)
 
@@ -237,6 +312,7 @@ class Dropdown(QFrame):
         self.setObjectName("dropdown")
         self.items = items
         self.current = current
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(0)
@@ -246,10 +322,10 @@ class Dropdown(QFrame):
         hl.setContentsMargins(12, 8, 10, 8)
         col = QVBoxLayout()
         col.setSpacing(1)
-        col.addWidget(label(caption_text.upper(), "fieldLabel"))
-        self.title = label("")
+        col.addWidget(ElideLabel(caption_text.upper(), "fieldLabel"))
+        self.title = ElideLabel("")
         self.title.setStyleSheet("font-size: 11pt; font-weight: 600;")
-        self.subtitle = caption("")
+        self.subtitle = ElideLabel("", "caption")
         col.addWidget(self.title)
         col.addWidget(self.subtitle)
         hl.addLayout(col, 1)
@@ -261,7 +337,7 @@ class Dropdown(QFrame):
 
         self.list = QWidget()
         ll = QVBoxLayout(self.list)
-        ll.setContentsMargins(8, 0, 8, 10)
+        ll.setContentsMargins(4, 0, 6, 0)
         ll.setSpacing(6)
         self.choices: dict[str, _Choice] = {}
         group = None
@@ -273,19 +349,50 @@ class Dropdown(QFrame):
             ch.clicked.connect(lambda k=key: self._choose(k))
             self.choices[key] = ch
             ll.addWidget(ch)
-        self.list.setVisible(False)
-        lay.addWidget(self.list)
+        ll.addStretch(1)
+        # список получает свою полную высоту, а не минимально возможную
+        self.list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.popup = _DropPopup(self, self.list)
+        self.popup.closed.connect(self._on_closed)
         self._render()
 
-    def header_height_hint(self) -> int:
-        return self.header.sizeHint().height()
+    def is_open(self) -> bool:
+        return self.popup.isVisible()
 
     def toggle(self) -> None:
-        self.list.setVisible(not self.list.isVisible())
-        self.setProperty("open", "true" if self.list.isVisible() else "false")
+        if self.popup.isVisible():
+            self.popup.hide()
+        else:
+            self.open()
+
+    def open(self) -> None:
+        w = max(self.width(), 300)
+        need = self.list.layout().totalHeightForWidth(w - 26) if self.list.layout().hasHeightForWidth() else -1
+        need = max(need, self.list.sizeHint().height()) + 14
+        top_left = self.mapToGlobal(QPoint(0, self.height() + 4))
+        screen = self.screen().availableGeometry()
+        below = screen.bottom() - top_left.y() - 8
+        above = self.mapToGlobal(QPoint(0, 0)).y() - screen.top() - 12
+        if below >= min(need, 260) or below >= above:
+            h = min(need, below)
+            pos = top_left
+        else:
+            h = min(need, above)
+            pos = self.mapToGlobal(QPoint(0, -h - 4))
+        self.popup.setFixedSize(w, max(h, 120))
+        self.popup.move(pos)
+        self.setProperty("open", "true")
         _repolish(self)
         self._render_chevron()
-        relayout(self.list)
+        self.popup.show()
+        ch = self.choices.get(self.current)
+        if ch is not None:
+            self.popup.area.ensureWidgetVisible(ch, 0, 12)
+
+    def _on_closed(self) -> None:
+        self.setProperty("open", "false")
+        _repolish(self)
+        self._render_chevron()
 
     def select(self, key: str) -> None:
         self.current = key
@@ -293,11 +400,8 @@ class Dropdown(QFrame):
 
     def _choose(self, key: str) -> None:
         self.current = key
-        self.list.setVisible(False)
-        self.setProperty("open", "false")
-        _repolish(self)
+        self.popup.hide()
         self._render()
-        relayout(self.list)
         self.changed.emit(key)
 
     def _render(self) -> None:
@@ -305,6 +409,7 @@ class Dropdown(QFrame):
         self.title.setText(item[1])
         self.subtitle.setText(item[2])
         self.subtitle.setVisible(bool(item[2]))
+        self.setToolTip(item[2])
         for k, ch in self.choices.items():
             ch.set_checked(k == item[0])
         self._render_chevron()
@@ -312,7 +417,7 @@ class Dropdown(QFrame):
     def _render_chevron(self) -> None:
         from PySide6.QtGui import QTransform
         pm = theme.pixmap("chevron", theme.palette().primary, 22)
-        if self.list.isVisible():
+        if self.popup.isVisible():
             pm = pm.transformed(QTransform().rotate(180))
         self.chev.setPixmap(pm)
 
@@ -642,16 +747,28 @@ class Columns(QWidget):
     """Карточки в одну или две колонки — в зависимости от ширины окна.
 
     В две колонки карточки раскладываются так, чтобы колонки были примерно одной высоты.
+    Каждая колонка — отдельный виджет: когда карточка раскрывается, колонка и окно сразу
+    пересчитывают высоту.
     """
 
     def __init__(self, widgets: list[QWidget], breakpoint: int = 820):
         super().__init__()
         self.widgets = widgets
         self.breakpoint = breakpoint
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         self.lay = QHBoxLayout(self)
         self.lay.setContentsMargins(0, 0, 0, 0)
         self.lay.setSpacing(14)
-        self.cols: list[QVBoxLayout] = []
+        self.cols: list[QWidget] = []
+        for _ in range(2):
+            col = QWidget()
+            col.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+            cl = QVBoxLayout(col)
+            cl.setContentsMargins(0, 0, 0, 0)
+            cl.setSpacing(14)
+            cl.setAlignment(Qt.AlignmentFlag.AlignTop)
+            self.cols.append(col)
+            self.lay.addWidget(col, 1, Qt.AlignmentFlag.AlignTop)
         self._n = 0
         self._arrange(1)
 
@@ -660,29 +777,22 @@ class Columns(QWidget):
             return
         self._n = n
         for col in self.cols:
-            while col.count():
-                col.takeAt(0)
-        while self.lay.count():
-            it = self.lay.takeAt(0)
-            if it.layout():
-                it.layout().setParent(None)
-        self.cols = []
-        for _ in range(n):
-            col = QVBoxLayout()
-            col.setSpacing(14)
-            self.cols.append(col)
-            self.lay.addLayout(col, 1)
+            lay = col.layout()
+            while lay.count():
+                lay.takeAt(0)
         heights = [0] * n
         for w in self.widgets:
             i = heights.index(min(heights))
-            self.cols[i].addWidget(w)
+            self.cols[i].layout().addWidget(w)
             heights[i] += w.sizeHint().height() + 14
-        for col in self.cols:
-            col.addStretch(1)
+        self.cols[1].setVisible(n > 1)
+        relayout(self)
 
     def resizeEvent(self, e):
-        self._arrange(2 if e.size().width() >= self.breakpoint else 1)
+        n = 2 if e.size().width() >= self.breakpoint else 1
         super().resizeEvent(e)
+        if n != self._n:
+            QTimer.singleShot(0, lambda: self._arrange(n))
 
 
 class ResponsiveRow(QWidget):
