@@ -100,8 +100,10 @@ class _TileGrid(QWidget):
             self.grid.addWidget(t, i // cols, i % cols)
 
     def resizeEvent(self, e):
-        self._place(2 if e.size().width() < 560 else 4)
         super().resizeEvent(e)
+        cols = 2 if e.size().width() < 560 else 4
+        if cols != self._cols:
+            QTimer.singleShot(0, lambda: (self._place(cols), relayout(self)))
 
 
 # ================================================================ главное окно

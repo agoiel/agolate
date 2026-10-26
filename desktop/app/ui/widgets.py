@@ -851,7 +851,16 @@ class ResponsiveRow(QWidget):
         self.box.addWidget(right, 1)
 
     def resizeEvent(self, e):
-        narrow = e.size().width() < self.breakpoint
-        self.box.setDirection(QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight)
-        self.middle.setVisible(not narrow)
         super().resizeEvent(e)
+        narrow = e.size().width() < self.breakpoint
+        direction = QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
+        if self.box.direction() != direction:
+            # после смены ряд ↔ столбик высота меняется — сообщить карточке и окну
+            QTimer.singleShot(0, lambda: self._apply(direction, narrow))
+
+    def _apply(self, direction, narrow: bool) -> None:
+        if self.box.direction() == direction:
+            return
+        self.box.setDirection(direction)
+        self.middle.setVisible(not narrow)
+        relayout(self)
