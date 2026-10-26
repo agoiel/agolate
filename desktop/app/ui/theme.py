@@ -88,15 +88,15 @@ QLabel#badge {{ background: {c.selected}; border-radius: 12px; }}
 QLabel#sectionLabel {{ color: {c.primary}; font-size: 9pt; font-weight: 600; padding-top: 6px; }}
 
 QPushButton {{ border-radius: 20px; padding: 8px 18px; font-weight: 600; min-height: 22px; }}
-QPushButton[kind="primary"] {{ background: {c.primary}; color: {c.on_primary}; border: none; }}
+QPushButton[kind="primary"] {{ background: {c.primary}; color: {c.on_primary}; border: 2px solid {c.primary}; }}
 QPushButton[kind="primary"]:hover {{ background: {_mix(c.primary, c.surface, 0.12)}; }}
-QPushButton[kind="hero"] {{ background: {CREAM}; color: {INK}; border: none; }}
+QPushButton[kind="hero"] {{ background: {CREAM}; color: {INK}; border: 2px solid {CREAM}; }}
 QPushButton[kind="hero"]:hover {{ background: #FFF4E4; }}
 QPushButton[kind="heroOutline"] {{ background: rgba(255,255,255,0.08); color: {CREAM}; border: 2px solid {CREAM}; }}
 QPushButton[kind="heroOutline"]:hover {{ background: rgba(255,255,255,0.16); }}
 QPushButton[kind="outline"] {{ background: transparent; color: {c.primary}; border: 2px solid {c.primary}; }}
 QPushButton[kind="outline"]:hover {{ background: {c.hover}; }}
-QPushButton[kind="tonal"] {{ background: {c.selected}; color: {c.primary}; border: none; }}
+QPushButton[kind="tonal"] {{ background: {c.selected}; color: {c.primary}; border: 2px solid {c.selected}; }}
 QPushButton[kind="tonal"]:hover {{ background: {_mix(c.selected, c.primary, 0.12)}; }}
 QPushButton:pressed {{ padding-top: 9px; padding-bottom: 7px; }}
 QPushButton:disabled {{ opacity: 0.5; }}
@@ -116,9 +116,8 @@ QComboBox QAbstractItemView {{ background: {c.surface}; border: 1px solid {c.bor
 
 QFrame#dropdown {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 14px; }}
 QFrame#dropdown[open="true"] {{ background: {c.surface}; border: 2px solid {c.primary}; }}
-QPushButton#dropHeader {{ background: transparent; border: none; text-align: left; padding: 10px 12px;
-    border-radius: 14px; font-weight: 400; }}
-QPushButton#dropHeader:hover {{ background: {c.hover}; }}
+QFrame#dropHeader {{ background: transparent; border: none; border-radius: 12px; }}
+QFrame#dropHeader:hover {{ background: {c.hover}; }}
 QFrame#choice {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 12px; }}
 QFrame#choice:hover {{ border-color: {c.primary}; }}
 QFrame#choice[checked="true"] {{ background: {c.selected}; border: 2px solid {c.primary}; }}
@@ -136,7 +135,9 @@ QPushButton[kind="link"] {{ background: transparent; border: none; color: {c.pri
     text-align: left; font-weight: 600; }}
 QPushButton[kind="link"]:hover {{ text-decoration: underline; }}
 
-QPushButton#collapseHeader {{ background: transparent; border: none; padding: 0; text-align: left; }}
+QFrame#collapseHeader {{ background: transparent; border: none; }}
+QWidget#transparent {{ background: transparent; }}
+QFrame#chip {{ background: rgba(255,255,255,0.14); border-radius: 13px; }}
 
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 4px 2px; }}
 QScrollBar::handle:vertical {{ background: {c.border}; border-radius: 3px; min-height: 40px; }}

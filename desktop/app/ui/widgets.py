@@ -5,10 +5,25 @@ from __future__ import annotations
 from PySide6.QtCore import (Property, QEasingCurve, QPoint, QPropertyAnimation, QRect, QRectF, QSize, Qt,
                             Signal)
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
-from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLayout,
+from PySide6.QtWidgets import (QAbstractButton, QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLayout,
                                QLineEdit, QPushButton, QSizePolicy, QToolButton, QVBoxLayout, QWidget)
 
 from . import theme
+
+
+class Clickable(QFrame):
+    """Рамка, которая ведёт себя как кнопка, но правильно считает высоту содержимого."""
+
+    clicked = Signal()
+
+    def __init__(self, name: str):
+        super().__init__()
+        self.setObjectName(name)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
+            self.clicked.emit()
 
 
 def _repolish(w: QWidget) -> None:
@@ -94,13 +109,10 @@ class Card(QFrame):
             self.chevron = QLabel()
             self.chevron.setFixedSize(22, 22)
             hl.addWidget(self.chevron, 0, Qt.AlignmentFlag.AlignVCenter)
-            btn = QPushButton()
-            btn.setObjectName("collapseHeader")
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn = Clickable("collapseHeader")
             bl = QVBoxLayout(btn)
             bl.setContentsMargins(0, 0, 0, 0)
             bl.addWidget(head)
-            btn.setMinimumHeight(40)
             btn.clicked.connect(self.toggle)
             outer.addWidget(btn)
             self._open = not collapsed
@@ -205,9 +217,7 @@ class Dropdown(QFrame):
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(0)
 
-        self.header = QPushButton()
-        self.header.setObjectName("dropHeader")
-        self.header.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.header = Clickable("dropHeader")
         hl = QHBoxLayout(self.header)
         hl.setContentsMargins(12, 8, 10, 8)
         col = QVBoxLayout()
@@ -442,7 +452,7 @@ class Segmented(QFrame):
 class StatusChip(QFrame):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background: rgba(255,255,255,0.14); border-radius: 13px;")
+        self.setObjectName("chip")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(10, 4, 12, 4)
         lay.setSpacing(8)
@@ -641,4 +651,25 @@ class Columns(QWidget):
 
     def resizeEvent(self, e):
         self._arrange(2 if e.size().width() >= self.breakpoint else 1)
+        super().resizeEvent(e)
+
+
+class ResponsiveRow(QWidget):
+    """Два поля в ряд со стрелкой между ними, а в узком месте — друг под другом."""
+
+    def __init__(self, left: QWidget, middle: QWidget, right: QWidget, breakpoint: int = 420):
+        super().__init__()
+        self.middle = middle
+        self.breakpoint = breakpoint
+        self.box = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.box.setContentsMargins(0, 0, 0, 0)
+        self.box.setSpacing(8)
+        self.box.addWidget(left, 1)
+        self.box.addWidget(middle, 0, Qt.AlignmentFlag.AlignBottom)
+        self.box.addWidget(right, 1)
+
+    def resizeEvent(self, e):
+        narrow = e.size().width() < self.breakpoint
+        self.box.setDirection(QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight)
+        self.middle.setVisible(not narrow)
         super().resizeEvent(e)

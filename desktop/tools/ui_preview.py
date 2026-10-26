@@ -10,7 +10,6 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from app.ui import theme  # noqa: E402
 from app.ui.main_window import MainWindow, create_app  # noqa: E402

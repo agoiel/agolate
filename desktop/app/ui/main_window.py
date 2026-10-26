@@ -30,8 +30,8 @@ from .glossary_editor import GlossaryEditor, new_glossary_file
 from .list_window import ListWindow
 from .overlay import OverlayWindow, paint_plates
 from .selector import SelectionWindow
-from .widgets import (Card, Columns, Dropdown, Field, FlowLayout, Hero, Segmented, StatusChip, Stepper,
-                      SwitchRow, Tile, caption, label, pill, round_pixmap, set_pill)
+from .widgets import (Card, Columns, Dropdown, Field, FlowLayout, Hero, ResponsiveRow, Segmented, StatusChip,
+                      Stepper, SwitchRow, Tile, caption, label, pill, round_pixmap, set_pill)
 
 # Описание переводчиков для списка (как в Android-версии)
 TRANSLATOR_INFO = [
@@ -204,7 +204,7 @@ class MainWindow(QWidget):
         brand.setSpacing(14)
         logo = QLabel()
         logo.setFixedSize(52, 52)
-        logo.setPixmap(round_pixmap(str(theme.resource("icon.png")), 26))
+        logo.setPixmap(round_pixmap(str(theme.resource("icon.png")), 52))
         logo.setStyleSheet("background: transparent;")
         brand.addWidget(logo)
         names = QVBoxLayout()
@@ -234,7 +234,7 @@ class MainWindow(QWidget):
         lay.addWidget(self.mode_switch)
 
         flow_host = QWidget()
-        flow_host.setStyleSheet("background: transparent;")
+        flow_host.setObjectName("transparent")
         flow = FlowLayout(10)
         flow_host.setLayout(flow)
         hk = self.cfg["hotkeys"]
@@ -297,18 +297,15 @@ class MainWindow(QWidget):
 
     def _build_languages(self) -> Card:
         card = Card("Языки", "Откуда и куда переводить", "lang")
-        row = QHBoxLayout()
-        row.setSpacing(8)
         self.src_combo = self._combo([(k, v["name"]) for k, v in languages.SOURCE_LANGUAGES.items()],
                                      self.cfg["source_lang"], self._set_source)
         self.tgt_combo = self._combo([(k, v["name"]) for k, v in languages.TARGET_LANGUAGES.items()],
                                      self.cfg["target_lang"], lambda v: self._set("target_lang", v))
-        row.addWidget(self._labeled("С языка", self.src_combo), 1)
         arrow = QLabel()
         arrow.setPixmap(theme.pixmap("arrow", theme.palette().primary, 20))
-        row.addWidget(arrow, 0, Qt.AlignmentFlag.AlignBottom)
-        row.addWidget(self._labeled("На язык", self.tgt_combo), 1)
-        card.add(row)
+        arrow.setContentsMargins(0, 0, 0, 10)
+        card.add(ResponsiveRow(self._labeled("С языка", self.src_combo), arrow,
+                               self._labeled("На язык", self.tgt_combo)))
         content = Dropdown("Что переводим", [
             ("manhwa", "Манхва, манга, маньхуа", "Облака с репликами, звуки, плашки", ""),
             ("screen", "Текст на экране", "Статьи, чаты, игры, приложения — перевод прямо поверх текста", ""),
