@@ -28,17 +28,15 @@ class Pipeline(private val ctx: Context) {
         val t0 = System.currentTimeMillis()
 
         if (isBlank(bitmap)) {
-            return PageResult(blankFrame = true, error = "Снимок области получился однотонным (обычно чёрным). " +
-                "Похоже, приложение-читалка запрещает снимки экрана — так делают некоторые официальные приложения. " +
-                "Откройте тайтл в браузере или другой читалке.")
+            return PageResult(blankFrame = true, error = tr("Снимок области получился однотонным (обычно чёрным). Похоже, приложение-читалка запрещает снимки экрана — так делают некоторые официальные приложения. Откройте тайтл в браузере или другой читалке."))
         }
         val ocrRes = try {
             ocr.recognize(bitmap, src, s.ocrMode)
         } catch (e: OcrException) {
-            return PageResult(error = e.message ?: "Ошибка распознавания")
+            return PageResult(error = e.message ?: tr("Ошибка распознавания"))
         }
         val lines = ocrRes.lines
-        val stats = ocrRes.stats.entries.joinToString(" · ") { (k, v) -> "${Ocr.scriptNames[k] ?: k} $v" }
+        val stats = ocrRes.stats.entries.joinToString(" · ") { (k, v) -> "${Ocr.scriptName(k)} $v" }
         val img = PixelImage.fromBitmap(bitmap)
         val bubbles = Bubbles.group(lines, img, Bubbles.Params(
             joiner = src.joiner, rtl = src.rtl, gap = s.bubbleGap,
@@ -64,9 +62,9 @@ class Pipeline(private val ctx: Context) {
                     translateBubbles(group, s, Languages.src(code), tgt)
                 }
             } catch (e: TranslateException) {
-                error = e.message ?: "Ошибка перевода"
+                error = e.message ?: tr("Ошибка перевода")
             } catch (e: Exception) {
-                error = "Ошибка перевода: ${e.message}"
+                error = trf("Ошибка перевода: %s", e.message)
             }
         }
         return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size, stats)

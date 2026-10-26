@@ -10,6 +10,8 @@ class Settings(ctx: Context) {
 
     var sourceLang by str("source_lang", "ko")
     var targetLang by str("target_lang", "ru")
+    /** Язык интерфейса: system | ru | en */
+    var uiLang by str("ui_lang", "system")
     var translator by str("translator", "google_free")
     var contextSize by int("context_size", 12)
     /** Минимальная пауза между запросами к сервису перевода, секунды */

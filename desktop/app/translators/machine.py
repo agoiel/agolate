@@ -10,6 +10,14 @@ from .. import languages
 from .base import TranslateError, TranslateRequest, Translator
 
 
+def _require(code: str, service: str, tgt: str) -> str:
+    """Код языка для сервиса; пустой — сервис этот язык не поддерживает."""
+    if not code:
+        raise TranslateError(f"{service} не поддерживает перевод на язык «{languages.tgt(tgt)['name']}». "
+                             "Выберите другой переводчик.")
+    return code
+
+
 class GoogleFreeTranslator(Translator):
     """Бесплатный веб-эндпоинт Google Translate.
 
@@ -78,7 +86,7 @@ class DeepLTranslator(Translator):
         body = {
             "text": req.anchored or req.texts,
             "source_lang": languages.src(req.src)["deepl"],
-            "target_lang": languages.tgt(req.tgt)["deepl"],
+            "target_lang": _require(languages.tgt(req.tgt)["deepl"], "DeepL", req.tgt),
         }
         # Контекст DeepL не переводит и не тарифицирует — передаём прошлые реплики
         if req.history:
@@ -105,7 +113,7 @@ class MicrosoftTranslator(Translator):
             headers["Ocp-Apim-Subscription-Region"] = region
         params = {"api-version": "3.0",
                   "from": languages.src(req.src)["microsoft"],
-                  "to": languages.tgt(req.tgt)["microsoft"]}
+                  "to": _require(languages.tgt(req.tgt)["microsoft"], "Microsoft", req.tgt)}
         r = self._post(self.URL, params=params, headers=headers,
                        json=[{"Text": t} for t in (req.anchored or req.texts)])
         return [item["translations"][0]["text"] for item in r.json()]
@@ -187,7 +195,8 @@ class DuckDuckGoTranslator(Translator):
         if not m:
             raise TranslateError("DuckDuckGo: не удалось начать сессию перевода. Попробуйте позже.")
         params = {"vqd": m.group(1), "query": "translate",
-                  "from": languages.src(req.src)["microsoft"], "to": languages.tgt(req.tgt)["microsoft"]}
+                  "from": languages.src(req.src)["microsoft"],
+                  "to": languages.tgt(req.tgt)["microsoft"] or languages.tgt(req.tgt)["google"]}
 
         def one(text: str) -> str:
             r = self._post("https://duckduckgo.com/translation.js", params=params, data=text.encode("utf-8"),

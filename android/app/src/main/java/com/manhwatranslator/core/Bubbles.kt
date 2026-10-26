@@ -191,10 +191,10 @@ object Bubbles {
                 }
             }
             when {
-                !letterRe.containsMatchIn(bubble.text) -> bubble.skipReason = "нет букв"
-                p.skipFreeText && bubble.kind == "free" -> bubble.skipReason = "текст поверх рисунка"
+                !letterRe.containsMatchIn(bubble.text) -> bubble.skipReason = tr("нет букв")
+                p.skipFreeText && bubble.kind == "free" -> bubble.skipReason = tr("текст поверх рисунка")
                 p.skipCut && img != null && (box.y <= 2 || box.y2 >= img.height - 2 ||
-                    box.x <= 1 || box.x2 >= img.width - 1) -> bubble.skipReason = "обрезано краем области"
+                    box.x <= 1 || box.x2 >= img.width - 1) -> bubble.skipReason = tr("обрезано краем области")
             }
             bubble
         }

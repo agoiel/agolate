@@ -63,10 +63,26 @@ SOURCE_LANGUAGES: dict[str, dict] = {
 }
 
 # Языки перевода
+# Языки перевода. Пустой код — этот переводчик язык не поддерживает.
 TARGET_LANGUAGES: dict[str, dict] = {
     "ru": {"name": "Русский", "google": "ru", "deepl": "RU", "microsoft": "ru", "llm": "Russian"},
     "uk": {"name": "Украинский", "google": "uk", "deepl": "UK", "microsoft": "uk", "llm": "Ukrainian"},
+    "be": {"name": "Белорусский", "google": "be", "deepl": "", "microsoft": "", "llm": "Belarusian"},
+    "kk": {"name": "Казахский", "google": "kk", "deepl": "", "microsoft": "kk", "llm": "Kazakh"},
+    "uz": {"name": "Узбекский", "google": "uz", "deepl": "", "microsoft": "uz", "llm": "Uzbek"},
     "en": {"name": "Английский", "google": "en", "deepl": "EN-US", "microsoft": "en", "llm": "English"},
+    "de": {"name": "Немецкий", "google": "de", "deepl": "DE", "microsoft": "de", "llm": "German"},
+    "fr": {"name": "Французский", "google": "fr", "deepl": "FR", "microsoft": "fr", "llm": "French"},
+    "es": {"name": "Испанский", "google": "es", "deepl": "ES", "microsoft": "es", "llm": "Spanish"},
+    "pt": {"name": "Португальский (Бразилия)", "google": "pt", "deepl": "PT-BR", "microsoft": "pt", "llm": "Brazilian Portuguese"},
+    "it": {"name": "Итальянский", "google": "it", "deepl": "IT", "microsoft": "it", "llm": "Italian"},
+    "pl": {"name": "Польский", "google": "pl", "deepl": "PL", "microsoft": "pl", "llm": "Polish"},
+    "cs": {"name": "Чешский", "google": "cs", "deepl": "CS", "microsoft": "cs", "llm": "Czech"},
+    "tr": {"name": "Турецкий", "google": "tr", "deepl": "TR", "microsoft": "tr", "llm": "Turkish"},
+    "id": {"name": "Индонезийский", "google": "id", "deepl": "ID", "microsoft": "id", "llm": "Indonesian"},
+    "vi": {"name": "Вьетнамский", "google": "vi", "deepl": "", "microsoft": "vi", "llm": "Vietnamese"},
+    "th": {"name": "Тайский", "google": "th", "deepl": "", "microsoft": "th", "llm": "Thai"},
+    "ar": {"name": "Арабский", "google": "ar", "deepl": "AR", "microsoft": "ar", "llm": "Arabic"},
 }
 
 

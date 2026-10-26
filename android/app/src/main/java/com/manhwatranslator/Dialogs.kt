@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.util.TypedValue
 import android.widget.ImageView
+import com.manhwatranslator.core.tr
+import com.manhwatranslator.core.trf
 import com.manhwatranslator.core.Settings
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -51,12 +53,12 @@ object Dialogs {
         val ui = Ui(ctx)
         val c = T.c
         val box = ui.vertical().apply { setPadding(ctx.dp(20), ctx.dp(20), ctx.dp(20), ctx.dp(16)) }
-        box.addView(ui.text("Результат", 20f, c.text, Fonts.medium))
+        box.addView(ui.text(tr("Результат"), 20f, c.text, Fonts.medium))
         val stats = buildString {
             val n = res.bubbles.count { it.translation.isNotBlank() }
-            append("Строк: ${res.lineCount} · облаков: $n · OCR ${res.ocrMs} мс · перевод ${res.translateMs} мс")
-            if (res.cacheHits > 0) append(" · из кэша ${res.cacheHits}")
-            if (res.ocrStats.isNotEmpty()) append("\nРаспознаватели: ${res.ocrStats}")
+            append(trf("Строк: %s · облаков: %s · OCR %s мс · перевод %s мс", res.lineCount, n, res.ocrMs, res.translateMs))
+            if (res.cacheHits > 0) append(trf(" · из кэша %s", res.cacheHits))
+            if (res.ocrStats.isNotEmpty()) append("\n" + trf("Распознаватели: %s", res.ocrStats))
         }
         box.addView(ui.caption(stats), lp().margins(ctx, top = 2))
 
@@ -79,7 +81,7 @@ object Dialogs {
                 outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
             }
             list.addView(iv, lp().margins(ctx, top = 12))
-            list.addView(ui.caption("Ниже — список реплик с оригиналом"), lp().margins(ctx, top = 8))
+            list.addView(ui.caption(tr("Ниже — список реплик с оригиналом")), lp().margins(ctx, top = 8))
         }
         if (res.error.isNotEmpty()) {
             list.addView(ui.text(res.error, 14f, c.text).apply {
@@ -89,9 +91,9 @@ object Dialogs {
         }
         if (res.bubbles.isEmpty() && res.error.isEmpty()) {
             list.addView(ui.caption(if (res.lineCount == 0)
-                "Распознавание не нашло ни одной строки. Попробуйте режим «Тщательный» или «Максимальный» в тонкой настройке."
+                tr("Распознавание не нашло ни одной строки. Попробуйте режим «Тщательный» или «Максимальный» в тонкой настройке.")
             else
-                "Строки найдены, но все отфильтрованы. Проверьте настройки «Пропускать обрезанное» и «Не переводить звуки»."),
+                tr("Строки найдены, но все отфильтрованы. Проверьте настройки «Пропускать обрезанное» и «Не переводить звуки».")),
                 lp().margins(ctx, top = 12))
         }
         res.bubbles.forEachIndexed { i, b ->
@@ -113,7 +115,7 @@ object Dialogs {
             if (b.translation.isNotBlank()) {
                 col.addView(ui.text(b.translation, 15.5f, c.text, Fonts.medium).apply { setTextIsSelectable(true) })
             } else {
-                col.addView(ui.text("— ${b.skipReason.ifBlank { "нет перевода" }} —", 14f, c.text2))
+                col.addView(ui.text("— " + b.skipReason.ifBlank { tr("нет перевода") } + " —", 14f, c.text2))
             }
             val tag = if (b.lang.isNotEmpty()) "${b.lang.uppercase()} · " else ""
             col.addView(ui.text(tag + b.text, 12.5f, c.text2).apply { setTextIsSelectable(true) }, lp().margins(ctx, top = 4))
@@ -127,7 +129,7 @@ object Dialogs {
         }, lp().margins(ctx, top = 6))
 
         val d = base(ctx, box)
-        val ok = PillButton(ctx, "Готово", null, PillStyle.PRIMARY, 48)
+        val ok = PillButton(ctx, tr("Готово"), null, PillStyle.PRIMARY, 48)
         ok.onClick { d.dismiss() }
         box.addView(ok, lp().margins(ctx, top = 16))
         d.show()
@@ -137,14 +139,14 @@ object Dialogs {
         val ui = Ui(ctx)
         val c = T.c
         val box = ui.vertical().apply { setPadding(ctx.dp(20), ctx.dp(20), ctx.dp(20), ctx.dp(16)) }
-        box.addView(ui.text("Как пользоваться", 20f, c.text, Fonts.medium))
+        box.addView(ui.text(tr("Как пользоваться"), 20f, c.text, Fonts.medium))
         val steps = listOf(
-            "Нажмите «Запустить переводчик». Разрешите показ поверх других приложений и запись экрана — выберите «Весь экран».",
-            "Откройте читалку. Справа появится круглая кнопка «Аа» — её можно перетащить куда удобно.",
-            "Нажмите «Аа»: в первый раз выделите пальцем область чтения, дальше она запомнится.",
-            "Перевод появится прямо поверх облаков. Нажмите «Аа» ещё раз — перевод исчезнет, листайте дальше.",
-            "Долгое нажатие на кнопку открывает меню: новая зона, показать текущую зону, смена режима, остановка.",
-            "Режим Live: перевод появляется сам, когда страница перестаёт двигаться. Нажатие на кнопку — пауза.",
+            tr("Нажмите «Запустить переводчик». Разрешите показ поверх других приложений и запись экрана — выберите «Весь экран»."),
+            tr("Откройте читалку. Справа появится круглая кнопка «Аа» — её можно перетащить куда удобно."),
+            tr("Нажмите «Аа»: в первый раз выделите пальцем область чтения, дальше она запомнится."),
+            tr("Перевод появится прямо поверх облаков. Нажмите «Аа» ещё раз — перевод исчезнет, листайте дальше."),
+            tr("Долгое нажатие на кнопку открывает меню: новая зона, показать текущую зону, смена режима, остановка."),
+            tr("Режим Live: перевод появляется сам, когда страница перестаёт двигаться. Нажатие на кнопку — пауза."),
         )
         val list = ui.vertical()
         steps.forEachIndexed { i, t ->
@@ -160,15 +162,14 @@ object Dialogs {
             row.addView(ui.text(t, 14.5f, c.text), lp(0, weight = 1f).margins(ctx, start = 12))
             list.addView(row, lp().margins(ctx, top = 14))
         }
-        list.addView(ui.caption("Android спрашивает разрешение на запись экрана при каждом запуске переводчика — " +
-            "это ограничение системы. При блокировке экрана запись может остановиться, тогда запустите снова.").apply {
+        list.addView(ui.caption(tr("Android спрашивает разрешение на запись экрана при каждом запуске переводчика — это ограничение системы. При блокировке экрана запись может остановиться, тогда запустите снова.")).apply {
             background = rounded(c.selectedBg, ctx.dpF(14f))
             setPadding(ctx.dp(14), ctx.dp(12), ctx.dp(14), ctx.dp(12))
         }, lp().margins(ctx, top = 18))
         val maxH = (ctx.resources.displayMetrics.heightPixels * 0.62f).toInt()
         box.addView(MaxHeightScrollView(ctx, maxH).apply { addView(list) })
         val d = base(ctx, box)
-        val ok = PillButton(ctx, "Понятно", null, PillStyle.PRIMARY, 48)
+        val ok = PillButton(ctx, tr("Понятно"), null, PillStyle.PRIMARY, 48)
         ok.onClick { d.dismiss() }
         box.addView(ok, lp().margins(ctx, top = 16))
         d.show()

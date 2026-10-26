@@ -23,18 +23,34 @@ data class TargetLang(
 )
 
 object Languages {
-    val sources = listOf(
-        SourceLang("ko", "Корейский (манхва)", "korean", "ko", "KO", "ko", "Korean", " ", false),
-        SourceLang("ja", "Японский (манга)", "japanese", "ja", "JA", "ja", "Japanese", "", true),
-        SourceLang("zh", "Китайский упрощённый (маньхуа)", "chinese", "zh-CN", "ZH", "zh-Hans", "Simplified Chinese", "", false),
-        SourceLang("zh-tw", "Китайский традиционный", "chinese", "zh-TW", "ZH", "zh-Hant", "Traditional Chinese", "", false),
-        SourceLang("en", "Английский (сканлейты)", "latin", "en", "EN", "en", "English", " ", false),
+    val sources get() = listOf(
+        SourceLang("ko", tr("Корейский (манхва)"), "korean", "ko", "KO", "ko", "Korean", " ", false),
+        SourceLang("ja", tr("Японский (манга)"), "japanese", "ja", "JA", "ja", "Japanese", "", true),
+        SourceLang("zh", tr("Китайский упрощённый (маньхуа)"), "chinese", "zh-CN", "ZH", "zh-Hans", "Simplified Chinese", "", false),
+        SourceLang("zh-tw", tr("Китайский традиционный"), "chinese", "zh-TW", "ZH", "zh-Hant", "Traditional Chinese", "", false),
+        SourceLang("en", tr("Английский (сканлейты)"), "latin", "en", "EN", "en", "English", " ", false),
     )
 
-    val targets = listOf(
-        TargetLang("ru", "Русский", "ru", "RU", "ru", "Russian"),
-        TargetLang("uk", "Украинский", "uk", "UK", "uk", "Ukrainian"),
-        TargetLang("en", "Английский", "en", "EN-US", "en", "English"),
+    /** Языки перевода. Пустой код — этот переводчик язык не поддерживает. */
+    val targets get() = listOf(
+        TargetLang("ru", tr("Русский"), "ru", "RU", "ru", "Russian"),
+        TargetLang("uk", tr("Украинский"), "uk", "UK", "uk", "Ukrainian"),
+        TargetLang("be", tr("Белорусский"), "be", "", "", "Belarusian"),
+        TargetLang("kk", tr("Казахский"), "kk", "", "kk", "Kazakh"),
+        TargetLang("uz", tr("Узбекский"), "uz", "", "uz", "Uzbek"),
+        TargetLang("en", tr("Английский"), "en", "EN-US", "en", "English"),
+        TargetLang("de", tr("Немецкий"), "de", "DE", "de", "German"),
+        TargetLang("fr", tr("Французский"), "fr", "FR", "fr", "French"),
+        TargetLang("es", tr("Испанский"), "es", "ES", "es", "Spanish"),
+        TargetLang("pt", tr("Португальский (Бразилия)"), "pt", "PT-BR", "pt", "Brazilian Portuguese"),
+        TargetLang("it", tr("Итальянский"), "it", "IT", "it", "Italian"),
+        TargetLang("pl", tr("Польский"), "pl", "PL", "pl", "Polish"),
+        TargetLang("cs", tr("Чешский"), "cs", "CS", "cs", "Czech"),
+        TargetLang("tr", tr("Турецкий"), "tr", "TR", "tr", "Turkish"),
+        TargetLang("id", tr("Индонезийский"), "id", "ID", "id", "Indonesian"),
+        TargetLang("vi", tr("Вьетнамский"), "vi", "", "vi", "Vietnamese"),
+        TargetLang("th", tr("Тайский"), "th", "", "th", "Thai"),
+        TargetLang("ar", tr("Арабский"), "ar", "AR", "ar", "Arabic"),
     )
 
     fun src(code: String): SourceLang = sources.firstOrNull { it.code == code } ?: sources[0]

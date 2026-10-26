@@ -20,7 +20,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import com.manhwatranslator.core.I18n
 import com.manhwatranslator.core.PageResult
+import com.manhwatranslator.core.tr
+import com.manhwatranslator.core.trf
 import com.manhwatranslator.core.Pipeline
 import com.manhwatranslator.core.Settings
 import java.util.concurrent.Executors
@@ -79,6 +82,7 @@ class OverlayService : Service() {
         super.onCreate()
         wm = getSystemService(WindowManager::class.java)
         settings = Settings(this)
+        I18n.init(this)
         pipeline = Pipeline(this)
     }
 
@@ -107,7 +111,7 @@ class OverlayService : Service() {
                 @Suppress("DEPRECATION") intent?.getParcelableExtra(EXTRA_DATA)
             }
             if (data == null) {
-                toast("Нет разрешения на запись экрана. Запустите заново из приложения.")
+                toast(tr("Нет разрешения на запись экрана. Запустите заново из приложения."))
                 stopEverything()
                 return START_NOT_STICKY
             }
@@ -116,12 +120,12 @@ class OverlayService : Service() {
                 val projection = mpm.getMediaProjection(code, data)
                 capturer = ScreenCapturer(this, projection) {
                     main.post {
-                        toast("Запись экрана остановлена. Чтобы продолжить, запустите переводчик снова.")
+                        toast(tr("Запись экрана остановлена. Чтобы продолжить, запустите переводчик снова."))
                         stopEverything()
                     }
                 }
             } catch (e: Exception) {
-                toast("Не удалось начать захват экрана: ${e.message}")
+                toast(trf("Не удалось начать захват экрана: %s", e.message))
                 stopEverything()
                 return START_NOT_STICKY
             }
@@ -149,7 +153,7 @@ class OverlayService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Переводчик поверх экрана", NotificationManager.IMPORTANCE_LOW))
+                NotificationChannel(CHANNEL, tr("Переводчик поверх экрана"), NotificationManager.IMPORTANCE_LOW))
         }
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val stopPi = PendingIntent.getService(this, 1,
@@ -158,12 +162,12 @@ class OverlayService : Service() {
         val notif = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(Brand.COCOA)
-            .setContentTitle("agolate работает")
-            .setContentText("Нажмите на кнопку «Аа», чтобы перевести область")
+            .setContentTitle(tr("agolate работает"))
+            .setContentText(tr("Нажмите на кнопку «Аа», чтобы перевести область"))
             .setOngoing(true)
             .setContentIntent(openPi)
             .addAction(Notification.Action.Builder(
-                Icon.createWithResource(this, R.drawable.ic_notification), "Остановить", stopPi).build())
+                Icon.createWithResource(this, R.drawable.ic_notification), tr("Остановить"), stopPi).build())
             .build()
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
@@ -221,7 +225,7 @@ class OverlayService : Service() {
         buttonParams = p
 
         if (settings.region == null) {
-            toast("Нажмите на кнопку, чтобы выделить область. Долгое нажатие — меню")
+            toast(tr("Нажмите на кнопку, чтобы выделить область. Долгое нажатие — меню"))
         }
     }
 
@@ -302,11 +306,11 @@ class OverlayService : Service() {
         if (menu != null || selectView != null) return
         val live = settings.translateMode == "live"
         val items = ArrayList<Pair<String, () -> Unit>>()
-        items.add("Выделить новую зону" to { startSelection() })
-        if (settings.region != null) items.add("Показать зону" to { showZone() })
-        if (translationView?.hasContent == true) items.add("Убрать перевод" to { translationView?.clear(); updateButton() })
-        items.add((if (live) "Режим: Live → Скриншот" else "Режим: Скриншот → Live") to { switchMode() })
-        items.add("Остановить переводчик" to { stopEverything() })
+        items.add(tr("Выделить новую зону") to { startSelection() })
+        if (settings.region != null) items.add(tr("Показать зону") to { showZone() })
+        if (translationView?.hasContent == true) items.add(tr("Убрать перевод") to { translationView?.clear(); updateButton() })
+        items.add((if (live) tr("Режим: Live → Скриншот") else tr("Режим: Скриншот → Live")) to { switchMode() })
+        items.add(tr("Остановить переводчик") to { stopEverything() })
 
         val m = ButtonMenu(this, items) { closeMenu() }
         val p = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -332,7 +336,7 @@ class OverlayService : Service() {
     private fun showZone() {
         val r = settings.region
         if (r == null) {
-            toast("Зона ещё не выделена")
+            toast(tr("Зона ещё не выделена"))
             return
         }
         translationView?.showFrame(r)
@@ -342,10 +346,10 @@ class OverlayService : Service() {
         if (settings.translateMode == "live") {
             settings.translateMode = "shot"
             setLive(false)
-            toast("Режим «Скриншот»: перевод по нажатию на кнопку")
+            toast(tr("Режим «Скриншот»: перевод по нажатию на кнопку"))
         } else {
             settings.translateMode = "live"
-            toast("Режим Live: перевод появляется сам, когда страница перестаёт двигаться. Нажатие — пауза")
+            toast(tr("Режим Live: перевод появляется сам, когда страница перестаёт двигаться. Нажатие — пауза"))
             if (settings.region == null) startSelection() else setLive(true)
         }
         updateButton()
@@ -435,14 +439,14 @@ class OverlayService : Service() {
             if (full == null) {
                 busy = false
                 updateButton()
-                toast("Нет кадра экрана, попробуйте ещё раз")
+                toast(tr("Нет кадра экрана, попробуйте ещё раз"))
                 return@postDelayed
             }
             val r = Rect(region)
             if (!r.intersect(0, 0, full.width, full.height) || r.width() < 10 || r.height() < 10) {
                 busy = false
                 updateButton()
-                toast("Область вне экрана. Выделите её заново (долгое нажатие)")
+                toast(tr("Область вне экрана. Выделите её заново (долгое нажатие)"))
                 return@postDelayed
             }
             val crop = Bitmap.createBitmap(full, r.left, r.top, r.width(), r.height())
@@ -451,7 +455,7 @@ class OverlayService : Service() {
                 val res = try {
                     pipeline.process(crop, settings)
                 } catch (e: Exception) {
-                    PageResult(error = "Ошибка: ${e.message}")
+                    PageResult(error = trf("Ошибка: %s", e.message))
                 }
                 crop.recycle()
                 main.post { showResult(res, r, fromLive) }
@@ -468,13 +472,13 @@ class OverlayService : Service() {
             baseThumb = null
         }
         updateButton()
-        val diag = if (res.ocrStats.isNotEmpty()) " (строк: ${res.ocrStats})" else ""
+        val diag = if (res.ocrStats.isNotEmpty()) trf(" (строк: %s)", res.ocrStats) else ""
         when {
             res.blankFrame -> { if (fromLive) setLive(false); toast(res.error) }
             res.error.isNotEmpty() -> toast(res.error)
             fromLive -> {}   // в Live не мешаем чтению сообщениями
-            res.bubbles.isEmpty() -> toast("Текст не найден в выделенной области$diag")
-            res.bubbles.none { it.translation.isNotBlank() } -> toast("Нечего переводить$diag")
+            res.bubbles.isEmpty() -> toast(tr("Текст не найден в выделенной области") + diag)
+            res.bubbles.none { it.translation.isNotBlank() } -> toast(tr("Нечего переводить") + diag)
         }
     }
 

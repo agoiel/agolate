@@ -17,6 +17,8 @@ import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import com.manhwatranslator.core.tr
+import com.manhwatranslator.core.trf
 import com.manhwatranslator.core.Bubble
 import kotlin.math.abs
 import kotlin.math.max
@@ -93,7 +95,7 @@ class FloatingButton(
             live == true -> "LIVE"
             live == false -> "II"
             showingTranslation -> "✕"
-            else -> "Аа"
+            else -> tr("Аа")
         }
         text.textSize = context.dpF(if (label.length > 2) 12f else 17f)
         text.color = if (busy) Brand.INK else Color.WHITE
@@ -174,8 +176,8 @@ class RegionSelectView(
         if (!active) {
             c.drawRect(0f, 0f, w, h, dim)
             drawHint(c, w / 2, h * 0.38f,
-                if (fullWidth) "Проведите сверху вниз по высоте области" else "Выделите пальцем область чтения")
-            drawHint(c, w / 2, h * 0.38f + context.dpF(48f), "Короткое касание — отмена")
+                if (fullWidth) tr("Проведите сверху вниз по высоте области") else tr("Выделите пальцем область чтения"))
+            drawHint(c, w / 2, h * 0.38f + context.dpF(48f), tr("Короткое касание — отмена"))
             return
         }
         val r = rect()
@@ -333,7 +335,7 @@ class TranslationView(ctx: Context) : View(ctx) {
                 (f.right - loc[0]).toFloat(), (f.bottom - loc[1]).toFloat())
             c.drawRect(rf, frameFill)
             c.drawRect(rf, framePaint)
-            val label = "Зона перевода · ${f.width()}×${f.height()}"
+            val label = trf("Зона перевода · %s×%s", f.width(), f.height())
             val tw = labelText.measureText(label)
             val pad = context.dpF(10f)
             val top = max(rf.top + context.dpF(8f), context.dpF(8f))

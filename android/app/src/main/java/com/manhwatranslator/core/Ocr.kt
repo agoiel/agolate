@@ -26,8 +26,10 @@ class Ocr(private val ctx: Context) {
     private val clients = HashMap<String, TextRecognizer>()
 
     companion object {
-        val scriptNames = mapOf("latin" to "латиница", "korean" to "корейский",
-            "japanese" to "японский", "chinese" to "китайский")
+        private val scriptNames = mapOf("latin" to tr("латиница"), "korean" to tr("корейский"),
+            "japanese" to tr("японский"), "chinese" to tr("китайский"))
+
+        fun scriptName(script: String): String = tr(scriptNames[script] ?: script)
 
         /**
          * Распознаватели для языка. Английский дополнительно читается корейским распознавателем:
@@ -100,12 +102,11 @@ class Ocr(private val ctx: Context) {
             val cause = e.cause
             if (cause is MlKitException && cause.errorCode == MlKitException.UNAVAILABLE) {
                 try { install(script) } catch (_: Exception) {}
-                throw OcrException("Сервисы Google Play ещё скачивают модель распознавания " +
-                    "(${scriptNames[script] ?: script}). Подождите минуту (нужен интернет) и попробуйте снова.")
+                throw OcrException(trf("Сервисы Google Play ещё скачивают модель распознавания (%s). Подождите минуту (нужен интернет) и попробуйте снова.", scriptName(script)))
             }
-            throw OcrException("Ошибка распознавания (${scriptNames[script] ?: script}): ${cause?.message ?: e.message}")
+            throw OcrException(trf("Ошибка распознавания (%s): %s", scriptName(script), cause?.message ?: e.message))
         } catch (e: java.util.concurrent.TimeoutException) {
-            throw OcrException("Распознавание заняло слишком много времени")
+            throw OcrException(tr("Распознавание заняло слишком много времени"))
         }
         val out = ArrayList<TextLine>()
         for (block in result.textBlocks) {

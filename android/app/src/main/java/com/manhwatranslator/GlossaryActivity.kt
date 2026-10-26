@@ -13,6 +13,9 @@ import android.widget.TextView
 import android.widget.Toast
 import com.manhwatranslator.core.Glossary
 import com.manhwatranslator.core.GlossaryStore
+import com.manhwatranslator.core.I18n
+import com.manhwatranslator.core.tr
+import com.manhwatranslator.core.trf
 import com.manhwatranslator.core.Settings
 
 /**
@@ -35,6 +38,7 @@ class GlossaryActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         T.init(this)
+        I18n.init(this)
         ui = Ui(this)
         settings = Settings(this)
         file = intent.getStringExtra(EXTRA_FILE)
@@ -54,29 +58,28 @@ class GlossaryActivity : Activity() {
         }
         bar.addView(back, LinearLayout.LayoutParams(dp(40), dp(40)))
         val titles = ui.vertical()
-        titles.addView(ui.text(if (file == null) "Новый глоссарий" else "Глоссарий", 19f,
+        titles.addView(ui.text(if (file == null) tr("Новый глоссарий") else tr("Глоссарий"), 19f,
             android.graphics.Color.WHITE, Fonts.medium))
-        titles.addView(ui.text("Имена и термины тайтла", 12.5f, Brand.CREAM))
+        titles.addView(ui.text(tr("Имена и термины тайтла"), 12.5f, Brand.CREAM))
         bar.addView(titles, lp(0, weight = 1f).margins(this, start = 8))
         page.addView(bar)
 
         // ---- содержимое
         val content = ui.vertical().apply { setPadding(dp(16), dp(16), dp(16), dp(16)) }
-        nameField = Field(this, "НАЗВАНИЕ ТАЙТЛА", g.name, "Например: мой любимый тайтл")
+        nameField = Field(this, tr("НАЗВАНИЕ ТАЙТЛА"), g.name, tr("Например: мой любимый тайтл"))
         content.addView(nameField)
 
         val help = ui.vertical().apply {
             background = rounded(c.selectedBg, dpF(16f))
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
-        help.addView(ui.text("Одна запись на строку", 14f, c.text, Fonts.medium))
-        help.addView(ui.text("헌터 = охотник\n형 = хён | обращение к старшему мужчине", 13.5f, c.primary, Fonts.mono),
+        help.addView(ui.text(tr("Одна запись на строку"), 14f, c.text, Fonts.medium))
+        help.addView(ui.text(tr("헌터 = охотник\n형 = хён | обращение к старшему мужчине"), 13.5f, c.primary, Fonts.mono),
             lp().margins(this, top = 6))
-        help.addView(ui.caption("После | можно добавить заметку: пол, кто это, как обращаться. " +
-            "Она помогает ИИ-переводчикам."), lp().margins(this, top = 6))
+        help.addView(ui.caption(tr("После | можно добавить заметку: пол, кто это, как обращаться. Она помогает ИИ-переводчикам.")), lp().margins(this, top = 6))
         content.addView(help, lp().margins(this, top = 14))
 
-        bodyField = Field(this, "ЗАПИСИ", g.toText(), "оригинал = перевод | заметка", multiline = true) { updateCounter() }
+        bodyField = Field(this, tr("ЗАПИСИ"), g.toText(), tr("оригинал = перевод | заметка"), multiline = true) { updateCounter() }
         content.addView(bodyField, lp().margins(this, top = 14))
         counter = ui.caption("")
         content.addView(counter, lp().margins(this, top = 6))
@@ -94,11 +97,11 @@ class GlossaryActivity : Activity() {
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
         if (file != null) {
-            val del = PillButton(this, "Удалить", null, PillStyle.OUTLINE, 48)
+            val del = PillButton(this, tr("Удалить"), null, PillStyle.OUTLINE, 48)
             del.onClick { confirmDelete() }
             bottom.addView(del, lp(0, weight = 1f).margins(this, end = 10))
         }
-        val save = PillButton(this, "Сохранить", R.drawable.ic_check, PillStyle.PRIMARY, 48)
+        val save = PillButton(this, tr("Сохранить"), R.drawable.ic_check, PillStyle.PRIMARY, 48)
         save.onClick { save() }
         bottom.addView(save, lp(0, weight = 2f))
         page.addView(View(this).apply { setBackgroundColor(c.border) }, lp(h = dp(1)))
@@ -114,13 +117,13 @@ class GlossaryActivity : Activity() {
 
     private fun updateCounter() {
         val n = Glossary.parseText(bodyField.edit.text.toString()).size
-        counter.text = "Записей: $n"
+        counter.text = trf("Записей: %s", n)
     }
 
     private fun save() {
         val name = nameField.edit.text.toString().trim()
         if (name.isEmpty()) {
-            Toast.makeText(this, "Введите название тайтла", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, tr("Введите название тайтла"), Toast.LENGTH_SHORT).show()
             nameField.edit.requestFocus()
             return
         }
@@ -128,21 +131,21 @@ class GlossaryActivity : Activity() {
         val target = file ?: GlossaryStore.fileNameFor(this, name)
         GlossaryStore.save(this, target, Glossary(name, settings.sourceLang, entries))
         settings.glossary = target
-        Toast.makeText(this, "Сохранено и выбрано: ${entries.size} записей", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, trf("Сохранено и выбрано: %s записей", entries.size), Toast.LENGTH_SHORT).show()
         finish()
     }
 
     private fun confirmDelete() {
         val f = file ?: return finish()
         AlertDialog.Builder(this)
-            .setTitle("Удалить глоссарий?")
-            .setMessage("Записи этого тайтла будут удалены без возможности восстановления.")
-            .setPositiveButton("Удалить") { _, _ ->
+            .setTitle(tr("Удалить глоссарий?"))
+            .setMessage(tr("Записи этого тайтла будут удалены без возможности восстановления."))
+            .setPositiveButton(tr("Удалить")) { _, _ ->
                 GlossaryStore.delete(this, f)
                 if (settings.glossary == f) settings.glossary = ""
                 finish()
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(tr("Отмена"), null)
             .show()
     }
 
