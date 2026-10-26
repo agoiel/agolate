@@ -74,6 +74,7 @@ class MainActivity : Activity() {
         T.init(this)
         I18n.init(this)
         s = Settings(this)
+        GlossaryStore.installBundled(this, s)
         ui = Ui(this)
 
         val root = ui.vertical()

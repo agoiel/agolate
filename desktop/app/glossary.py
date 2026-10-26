@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -60,32 +61,25 @@ class Glossary:
         return sorted((e for e in self.entries if e.source and e.target),
                       key=lambda e: len(e.source), reverse=True)
 
+    @staticmethod
+    def _pattern(e: GlossaryEntry) -> re.Pattern:
+        """Термин ищется только в начале слова: «인형» (кукла) не совпадёт с «형».
+        После термина могут идти частицы и окончания (선배님, 선배가, 길드에서)."""
+        return re.compile(r"(?<![^\W_])" + re.escape(e.source), re.IGNORECASE)
+
     def find(self, texts: list[str]) -> list[GlossaryEntry]:
         """Термины, которые встречаются в этих текстах."""
-        joined = "\n".join(texts).lower()
-        return [e for e in self._sorted() if e.source.lower() in joined]
+        joined = "\n".join(texts)
+        return [e for e in self._sorted() if self._pattern(e).search(joined)]
 
     def apply_anchors(self, text: str) -> str:
         """Заменяет термины на их перевод прямо в исходном тексте."""
         out = text
         for e in self._sorted():
-            if e.source.lower() in out.lower():
-                out = _replace_ci(out, e.source, e.target)
+            # глагольные окончания не трогаем: «각성했다» — «пробудился», а не «пробуждение했다»
+            p = re.compile(self._pattern(e).pattern + r"(?![하했한할해합함됐된될되돼])", re.IGNORECASE)
+            out = p.sub(lambda _m, t=e.target: t, out)
         return out
-
-
-def _replace_ci(text: str, old: str, new: str) -> str:
-    """Замена без учёта регистра (для английских сканлейтов)."""
-    low, old_low = text.lower(), old.lower()
-    res, i = [], 0
-    while True:
-        j = low.find(old_low, i)
-        if j < 0:
-            res.append(text[i:])
-            return "".join(res)
-        res.append(text[i:j])
-        res.append(new)
-        i = j + len(old)
 
 
 def list_glossaries(folder: Path) -> list[Path]:

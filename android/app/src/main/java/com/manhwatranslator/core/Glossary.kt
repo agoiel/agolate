@@ -18,15 +18,26 @@ class Glossary(var name: String, var sourceLang: String = "", var entries: List<
     private fun sorted() = entries.filter { it.source.isNotBlank() && it.target.isNotBlank() }
         .sortedByDescending { it.source.length }
 
+    /**
+     * Термин ищется только в начале слова: «인형» (кукла) не совпадёт с «형».
+     * После термина могут идти частицы и окончания (선배님, 선배가, 길드에서).
+     */
+    private fun pattern(e: GlossaryEntry) =
+        Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(e.source), RegexOption.IGNORE_CASE)
+
     fun find(texts: List<String>): List<GlossaryEntry> {
-        val joined = texts.joinToString("\n").lowercase()
-        return sorted().filter { joined.contains(it.source.lowercase()) }
+        val joined = texts.joinToString("\n")
+        return sorted().filter { pattern(it).containsMatchIn(joined) }
     }
+
+    /** Глагольные окончания: «각성했다» — «пробудился», а не «пробуждение했다». */
+    private val verbEnding = "(?![하했한할해합함됐된될되돼])"
 
     fun applyAnchors(text: String): String {
         var out = text
         for (e in sorted()) {
-            out = out.replace(Regex(Regex.escape(e.source), RegexOption.IGNORE_CASE), Regex.escapeReplacement(e.target))
+            val p = Regex(pattern(e).pattern + verbEnding, RegexOption.IGNORE_CASE)
+            out = p.replace(out, Regex.escapeReplacement(e.target))
         }
         return out
     }
@@ -89,6 +100,28 @@ object GlossaryStore {
 
     fun delete(ctx: Context, file: String) {
         File(dir(ctx), file).delete()
+    }
+
+    /**
+     * Глоссарии, которые идут вместе с приложением (assets/glossaries).
+     * Ставятся один раз при первом запуске; если пользователь удалит — не возвращаются.
+     */
+    fun installBundled(ctx: Context, settings: Settings) {
+        val prefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("bundled_glossaries_v1", false)) return
+        try {
+            for (name in ctx.assets.list("glossaries") ?: emptyArray()) {
+                val target = File(dir(ctx), name)
+                if (!target.exists()) {
+                    ctx.assets.open("glossaries/$name").use { inp -> target.outputStream().use { inp.copyTo(it) } }
+                }
+            }
+            if (settings.glossary.isBlank() && File(dir(ctx), "universal_ko.json").exists()) {
+                settings.glossary = "universal_ko.json"
+            }
+        } catch (_: Exception) {
+        }
+        prefs.edit().putBoolean("bundled_glossaries_v1", true).apply()
     }
 
     /** Имя файла из названия тайтла. */
