@@ -894,10 +894,11 @@ class Columns(QWidget):
         if n == self._n:
             return
         self._n = n
+        # removeWidget, а не takeAt: старая запись раскладки должна удалиться сразу, иначе Qt
+        # продолжает обновлять размеры через неё, и перенесённые карточки перестают расти
         for col in self.cols:
-            lay = col.layout()
-            while lay.count():
-                lay.takeAt(0)
+            for w in self.widgets:
+                col.layout().removeWidget(w)
         heights = [0] * n
         for w in self.widgets:
             i = heights.index(min(heights))
