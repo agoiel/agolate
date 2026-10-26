@@ -84,6 +84,12 @@ class Glossary:
         return out
 
 
+def universal_for(folder: Path, lang: str) -> str:
+    """Имя встроенного универсального глоссария для языка оригинала ('' — нет такого)."""
+    name = f"universal_{lang.split('-')[0]}.json"
+    return name if (folder / name).exists() else ""
+
+
 def list_glossaries(folder: Path) -> list[Path]:
     folder.mkdir(parents=True, exist_ok=True)
     return sorted(folder.glob("*.json"))

@@ -39,6 +39,13 @@ DEFAULTS: dict = {
     "context_size": 12,               # сколько прошлых реплик передавать как контекст
     "request_interval": 1.0,          # мин. пауза между запросами к переводчику, секунды
     "glossary": "",                   # имя файла глоссария в папке glossaries (пусто — без глоссария)
+    "active_title": "",               # активный тайтл (его контекст хранится в папке titles)
+    "content_mode": "manhwa",         # manhwa — облака манхвы | screen — обычный текст на экране
+    "full_width_select": False,       # выделять область по всей ширине экрана
+    "theme": "system",                # system | light | dark
+    "translate_mode": "shot",         # shot — перевод по кнопке | live — сам, когда страница остановилась
+    "always_on_top": False,           # главное окно поверх всех окон
+    "window_size": None,              # размер главного окна (запоминается)
     "translators": {
         "yandex": {"api_key": "", "folder_id": ""},
         "lingva": {"base_url": "https://lingva.ml"},

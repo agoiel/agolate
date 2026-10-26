@@ -1,0 +1,99 @@
+"""Тайтлы — сохранённый контекст каждой манхвы (как в Android-версии).
+
+У тайтла своё название, свой глоссарий, последние реплики (их видит переводчик)
+и кэш уже переведённых облаков. Хранится в папке titles рядом с программой.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+import uuid
+from collections import OrderedDict, deque
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .config import ROOT
+
+TITLES_DIR = ROOT / "titles"
+MAX_HISTORY = 60
+MAX_CACHE = 3000
+
+
+@dataclass
+class Title:
+    id: str
+    name: str
+    glossary: str = ""
+    history: deque = field(default_factory=lambda: deque(maxlen=MAX_HISTORY))
+    cache: OrderedDict = field(default_factory=OrderedDict)
+    updated: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "name": self.name, "glossary": self.glossary, "updated": self.updated,
+                "history": [list(p) for p in self.history], "cache": dict(self.cache)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Title":
+        t = cls(d["id"], d.get("name", ""), d.get("glossary", ""), updated=d.get("updated", 0))
+        for p in d.get("history", []):
+            if isinstance(p, list) and len(p) == 2:
+                t.history.append((str(p[0]), str(p[1])))
+        t.cache.update({str(k): str(v) for k, v in d.get("cache", {}).items()})
+        return t
+
+
+def path(title_id: str) -> Path:
+    TITLES_DIR.mkdir(parents=True, exist_ok=True)
+    return TITLES_DIR / f"{title_id}.json"
+
+
+def load(title_id: str) -> Title | None:
+    if not title_id:
+        return None
+    p = path(title_id)
+    try:
+        return Title.from_dict(json.loads(p.read_text(encoding="utf-8"))) if p.exists() else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def save(t: Title) -> None:
+    while len(t.cache) > MAX_CACHE:
+        t.cache.popitem(last=False)
+    t.updated = time.time()
+    p = path(t.id)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(t.to_dict(), ensure_ascii=False), encoding="utf-8")
+    tmp.replace(p)
+
+
+def create(name: str, glossary: str = "") -> Title:
+    t = Title(uuid.uuid4().hex[:8], name.strip(), glossary)
+    save(t)
+    return t
+
+
+def delete(title_id: str) -> None:
+    try:
+        path(title_id).unlink()
+    except OSError:
+        pass
+
+
+def clear_context(title_id: str) -> None:
+    t = load(title_id)
+    if t:
+        t.history.clear()
+        t.cache.clear()
+        save(t)
+
+
+def list_titles() -> list[Title]:
+    TITLES_DIR.mkdir(parents=True, exist_ok=True)
+    out = []
+    for p in TITLES_DIR.glob("*.json"):
+        t = load(p.stem)
+        if t:
+            out.append(t)
+    return sorted(out, key=lambda t: t.updated, reverse=True)

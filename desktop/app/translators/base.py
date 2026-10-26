@@ -43,6 +43,7 @@ class TranslateRequest:
     history: list[tuple[str, str]] = field(default_factory=list)   # прошлые реплики (оригинал, перевод)
     glossary: list[GlossaryEntry] = field(default_factory=list)     # термины, найденные на странице
     anchored: list[str] | None = None     # тексты с подставленными якорями (для обычных переводчиков)
+    screen: bool = False                  # обычный текст с экрана, а не облака манхвы
 
 
 class Translator:

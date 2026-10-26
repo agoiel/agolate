@@ -30,10 +30,23 @@ Rules:
 - Answer ONLY with JSON: {{"translations": ["...", "..."]}} — exactly {n} strings in the same order."""
 
 
+SCREEN_PROMPT = """You translate text captured from a computer screen (apps, articles, chats, games, menus)
+from {src} into {tgt}.
+
+Rules:
+- The fragments are separate blocks of text in reading order. Translate each one accurately and naturally.
+- The text comes from OCR and may contain recognition errors or broken line wraps. Silently fix obvious errors.
+- Keep short UI labels short. Keep numbers, names, usernames, links and code as they are.
+- Always use the glossary translations for names and terms.
+- Do not add notes or explanations. Do not merge or split fragments.
+- Answer ONLY with JSON: {{"translations": ["...", "..."]}} — exactly {n} strings in the same order."""
+
+
 def build_messages(req: TranslateRequest) -> tuple[str, str]:
     src_name = languages.src(req.src)["llm"]
     tgt_name = languages.tgt(req.tgt)["llm"]
-    system = SYSTEM_PROMPT.format(src=src_name, tgt=tgt_name, n=len(req.texts))
+    prompt = SCREEN_PROMPT if req.screen else SYSTEM_PROMPT
+    system = prompt.format(src=src_name, tgt=tgt_name, n=len(req.texts))
 
     parts: list[str] = []
     if req.glossary:

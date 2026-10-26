@@ -13,7 +13,8 @@ class SelectionWindow(QWidget):
     selected = Signal(object)   # Region
     cancelled = Signal()
 
-    def __init__(self):
+    def __init__(self, full_width: bool = False):
+        self.full_width = full_width   # выделяется только высота, ширина — весь экран
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
                          | Qt.WindowType.Tool)
         self.screen_obj = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
@@ -35,7 +36,10 @@ class SelectionWindow(QWidget):
     def _rect(self) -> QRect:
         if self._start is None or self._end is None:
             return QRect()
-        return QRect(self._start, self._end).normalized()
+        r = QRect(self._start, self._end).normalized()
+        if self.full_width:
+            r = QRect(0, r.y(), self.width(), r.height())
+        return r
 
     def paintEvent(self, _):
         p = QPainter(self)
@@ -46,10 +50,10 @@ class SelectionWindow(QWidget):
         if not r.isNull():
             dim = dim.subtracted(QRegion(r))
         p.setClipRegion(dim)
-        p.fillRect(self.rect(), QColor(0, 0, 0, 110))
+        p.fillRect(self.rect(), QColor(33, 24, 22, 140))
         p.setClipping(False)
         if not r.isNull():
-            p.setPen(QPen(QColor(80, 170, 255), 2))
+            p.setPen(QPen(QColor(172, 134, 83), 2))
             p.drawRect(r)
             p.setFont(QFont("Segoe UI", 10))
             p.setPen(QColor(255, 255, 255))
@@ -58,7 +62,8 @@ class SelectionWindow(QWidget):
             p.setFont(QFont("Segoe UI", 14))
             p.setPen(QColor(255, 255, 255))
             p.drawText(self.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignHCenter,
-                       "Выделите область чтения мышкой  ·  Esc — отмена")
+                       ("Проведите мышкой сверху вниз по высоте области  ·  Esc — отмена" if self.full_width
+                        else "Выделите область чтения мышкой  ·  Esc — отмена"))
         p.end()
 
     # ------------------------------------------------------------ мышь и клавиши
@@ -79,7 +84,7 @@ class SelectionWindow(QWidget):
             return
         r = self._rect()
         self.close()
-        if r.width() < 20 or r.height() < 20:
+        if (not self.full_width and r.width() < 20) or r.height() < 20:
             self.cancelled.emit()
             return
         self.selected.emit(Region(self.screen_obj.name(), r.x(), r.y(), r.width(), r.height()))

@@ -1,0 +1,45 @@
+name: Desktop UI preview
+
+# Запускает ПК-версию без экрана, снимает главное окно при разной ширине
+# и кладёт снимки в ветку ui-preview — чтобы проверить интерфейс без Windows.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 fonts-noto-core
+          python -m pip install -q PySide6-Essentials numpy Pillow requests
+
+      - name: Screenshots
+        working-directory: desktop
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/ui_preview.py ../preview
+
+      - name: Publish to ui-preview branch
+        run: |
+          cd preview
+          git init -q
+          git checkout -q -b ui-preview
+          git add .
+          git -c user.name="github-actions" -c user.email="actions@github.com" commit -q -m "UI preview ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ui-preview

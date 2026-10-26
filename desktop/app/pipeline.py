@@ -15,7 +15,7 @@ from collections import OrderedDict, deque
 import numpy as np
 from PIL import Image
 
-from . import languages
+from . import languages, titles
 from .bubbles import group_lines
 from .config import GLOSSARY_DIR, Config
 from .glossary import Glossary
@@ -38,13 +38,38 @@ class Pipeline:
         self.glossary: Glossary | None = None
         self._glossary_name = None
         self.cache: OrderedDict[str, str] = OrderedDict()
-        self.history: deque[tuple[str, str]] = deque(maxlen=50)
+        self.history: deque[tuple[str, str]] = deque(maxlen=titles.MAX_HISTORY)
+        self._title_id: str | None = None
 
-    # ------------------------------------------------------------ сессия
+    # ------------------------------------------------------------ сессия и тайтлы
     def reset_session(self) -> None:
-        """Новый тайтл: забыть контекст и кэш."""
+        """Забыть контекст в памяти; контекст тайтла перечитается с диска."""
         self.cache.clear()
         self.history.clear()
+        self._title_id = None
+
+    def _sync_title(self) -> None:
+        """Подгрузить контекст активного тайтла, если тайтл сменился."""
+        tid = self.cfg.get("active_title") or ""
+        if tid == self._title_id:
+            return
+        self.cache.clear()
+        self.history.clear()
+        t = titles.load(tid)
+        if t:
+            self.cache.update(t.cache)
+            self.history.extend(t.history)
+        self._title_id = tid
+
+    def _persist_title(self) -> None:
+        t = titles.load(self.cfg.get("active_title") or "")
+        if not t:
+            return
+        t.history.clear()
+        t.history.extend(self.history)
+        t.cache.clear()
+        t.cache.update(self.cache)
+        titles.save(t)
 
     def reload(self) -> None:
         """Перечитать настройки (после окна настроек)."""
@@ -88,7 +113,9 @@ class Pipeline:
         lang = cfg["source_lang"]
         info = languages.src(lang)
         result = PageResult(image_size=image.size)
+        screen = cfg.get("content_mode") == "screen"
         t0 = time.perf_counter()
+        self._sync_title()
 
         try:
             mode = cfg.get("ocr_mode", "thorough")
@@ -104,16 +131,24 @@ class Pipeline:
         result.timings["ocr"] = t1 - t0
 
         arr = np.asarray(image.convert("RGB"))
-        result.bubbles = group_lines(
-            lines, arr,
-            joiner=info["joiner"], direction=info["direction"],
-            gap=float(cfg["bubble_gap"]), row_gap=float(cfg["bubble_row_gap"]),
-            border_check=bool(cfg["bubble_border_check"]),
-            skip_free_text=bool(cfg["skip_free_text"]),
-            skip_cut=bool(cfg["skip_cut_bubbles"]),
-        )
+        if screen:
+            # обычный текст: строки собираются в абзацы, ничего не отбрасывается из-за фона или края
+            result.bubbles = group_lines(lines, arr, joiner=info["joiner"], direction="ltr", gap=0.9,
+                                         row_gap=float(cfg["bubble_row_gap"]), border_check=False,
+                                         skip_free_text=False, skip_cut=False)
+        else:
+            result.bubbles = group_lines(
+                lines, arr,
+                joiner=info["joiner"], direction=info["direction"],
+                gap=float(cfg["bubble_gap"]), row_gap=float(cfg["bubble_row_gap"]),
+                border_check=bool(cfg["bubble_border_check"]),
+                skip_free_text=bool(cfg["skip_free_text"]),
+                skip_cut=bool(cfg["skip_cut_bubbles"]),
+            )
         for b in result.bubbles:
             b.lang = languages.detect(b.text, lang)
+            if screen:
+                b.kind = "screen"
         result.line_count = len(lines)
         t2 = time.perf_counter()
         result.timings["bubbles"] = t2 - t1
@@ -142,6 +177,7 @@ class Pipeline:
                     self._translate(group, code)
             except TranslateError as e:
                 result.error = str(e)
+            self._persist_title()
         result.timings["translate"] = time.perf_counter() - t2
         return result
 
@@ -161,6 +197,7 @@ class Pipeline:
         req = TranslateRequest(
             texts=texts, src=src_code, tgt=cfg["target_lang"],
             history=list(self.history)[-n_ctx:] if n_ctx > 0 else [],
+            screen=cfg.get("content_mode") == "screen",
         )
         if glossary:
             req.glossary = glossary.find(texts)
