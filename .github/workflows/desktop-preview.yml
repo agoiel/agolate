@@ -43,6 +43,11 @@ jobs:
       fail-fast: false
       matrix:
         scale: ["1", "1.25", "1.5"]
+        code: ["new"]
+        include:
+          # для сравнения: прошлая версия виджетов, на которую жаловались
+          - scale: "1.25"
+            code: "old"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -50,17 +55,23 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: python -m pip install -q PySide6-Essentials numpy Pillow requests
+      - name: Old widgets
+        if: matrix.code == 'old'
+        shell: bash
+        run: |
+          git fetch -q --depth=50 origin main
+          git show 58371b6:desktop/app/ui/widgets.py > desktop/app/ui/widgets.py
       - name: Clicks on real Windows
         working-directory: desktop
         env:
           QT_QPA_PLATFORM: windows
           QT_SCALE_FACTOR: ${{ matrix.scale }}
           PREVIEW_ONLY_CLICKS: "1"
-        run: python tools/ui_preview.py ../preview/win-${{ matrix.scale }}
+        run: python tools/ui_preview.py ../preview/win-${{ matrix.scale }}-${{ matrix.code }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: shots-win-${{ matrix.scale }}
+          name: shots-win-${{ matrix.scale }}-${{ matrix.code }}
           path: preview
 
   publish:

@@ -38,13 +38,28 @@ from PySide6.QtTest import QTest  # noqa: E402
 from app.ui.widgets import Clickable  # noqa: E402
 
 
+LOG = []
+
+
 def report(tag, dd):
     """Сколько места нужно заголовку и сколько он получил — если меньше, текст наезжает."""
     h = dd.header
-    print(f"[{tag}] header need={h.minimumSizeHint().height()}/{h.sizeHint().height()} got={h.height()} "
+    log(f"[{tag}] header need={h.minimumSizeHint().height()}/{h.sizeHint().height()} got={h.height()} "
           f"title y={dd.title.y()} h={dd.title.height()} sub y={dd.subtitle.y()} h={dd.subtitle.height()} "
           f"list visible={dd.list.isVisible()} need={dd.list.sizeHint().height()} got={dd.list.height()} "
           f"dropdown got={dd.height()}")
+
+
+def log(msg):
+    print(msg)
+    LOG.append(msg)
+    (out / "report.txt").write_text("\n".join(LOG), encoding="utf-8")
+
+
+def show(w):
+    """Прокрутить окно так, чтобы виджет был сверху видимой части."""
+    win.scroll.verticalScrollBar().setValue(w.mapTo(win.scroll.widget(), QPoint(0, 0)).y() - 20)
+    settle()
 
 
 def click(w):
@@ -59,24 +74,26 @@ win = MainWindow(cfg)
 win.resize(1000, 1100)
 win.show()
 settle()
-heads = [w for w in win.findChildren(Clickable) if w.objectName() == "dropHeader"]
+
 translator = next(d for d in win.findChildren(Dropdown) if "deepl" in d.choices)
+show(translator)
 report("before", translator)
 click(translator.header)
 report("opened", translator)
 win.grab().save(str(out / "click_translator_open.png"))
-print("translator list visible:", translator.list.isVisible(), "height:", translator.list.height())
+log(f"translator list visible: {translator.list.isVisible()} height: {translator.list.height()}")
 # выбрать другой переводчик кликом по пункту
 choice = translator.choices["deepl"]
 click(choice)
 win.grab().save(str(out / "click_translator_chosen.png"))
-print("chosen:", translator.current, "list visible after choose:", translator.list.isVisible())
+log(f"chosen: {translator.current} list visible after choose: {translator.list.isVisible()}")
+report("chosen", translator)
 cards = [c for c in win.findChildren(Card) if hasattr(c, "chevron")]
 collapse_heads = [w for w in cards[0].findChildren(Clickable) if w.objectName() == "collapseHeader"]
+show(cards[0])
 click(collapse_heads[0])
-print("tuning open:", cards[0].body.isVisible(), "height:", cards[0].body.height())
-win.scroll.verticalScrollBar().setValue(cards[0].mapTo(win.scroll.widget(), QPoint(0, 0)).y() - 20)
-settle()
+show(cards[0])
+log(f"tuning open: {cards[0].body.isVisible()} need={cards[0].body.sizeHint().height()} got={cards[0].body.height()}")
 win.grab().save(str(out / "click_tuning_open.png"))
 win.close()
 settle()
