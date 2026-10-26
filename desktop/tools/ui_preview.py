@@ -140,6 +140,7 @@ for c in cards[1:]:
     click(hd)
 squeezed("all cards open")
 win.resize(420, 760)
+QTest.qWait(400)
 settle()
 squeezed("narrow window")
 win.grab().save(str(out / "click_narrow.png"))
