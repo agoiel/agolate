@@ -41,6 +41,8 @@ def relayout(w: QWidget) -> None:
         if lay is not None:
             lay.invalidate()
             lay.activate()
+        if isinstance(p, Clip):
+            p.sync()
         p.updateGeometry()
         if isinstance(p, ScrollContent):
             p.schedule()
@@ -98,6 +100,7 @@ class HeightAnimator:
         self.anim.finished.connect(self._done)
         self._opening = False
         self._keep_fixed = False
+        self.on_opened = None
 
     def _step(self, v) -> None:
         self.w.setFixedHeight(int(v))
@@ -130,6 +133,8 @@ class HeightAnimator:
                 self.w.setMinimumHeight(0)
                 self.w.setMaximumHeight(MAX_H)
             relayout(self.w)
+            if self.on_opened is not None:
+                self.on_opened()
             scroll_into_view(self.owner)
         else:
             self.w.setVisible(False)
@@ -145,6 +150,46 @@ def natural_height(w: QWidget, width: int) -> int:
     lay.activate()
     h = lay.totalHeightForWidth(width) if lay.hasHeightForWidth() else -1
     return max(h, lay.totalSizeHint().height())
+
+
+class Clip(QWidget):
+    """Шторка: содержимое всегда своей полной высоты, а видна только верхняя часть.
+
+    Во время анимации карточка «приоткрывается», а не сплющивает содержимое.
+    """
+
+    def __init__(self, inner: QWidget):
+        super().__init__()
+        self.inner = inner
+        inner.setParent(self)
+        sp = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        sp.setHeightForWidth(True)
+        self.setSizePolicy(sp)
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return True
+
+    def heightForWidth(self, w: int) -> int:  # noqa: N802
+        return natural_height(self.inner, w)
+
+    def sizeHint(self):  # noqa: N802
+        return QSize(self.inner.sizeHint().width(), self.heightForWidth(max(self.width(), 200)))
+
+    def minimumSizeHint(self):  # noqa: N802
+        return QSize(self.inner.minimumSizeHint().width(), self.heightForWidth(max(self.width(), 200)))
+
+    def sync(self) -> None:
+        self.inner.setGeometry(0, 0, self.width(), self.heightForWidth(self.width()))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.sync()
+
+    def event(self, e):
+        if e.type() == QEvent.Type.LayoutRequest:
+            self.updateGeometry()
+            self.sync()
+        return super().event(e)
 
 
 class ScrollContent(QWidget):
@@ -319,12 +364,14 @@ class Card(QFrame):
             btn.clicked.connect(self.toggle)
             outer.addWidget(btn)
             self._open = not collapsed
-            self.body.setVisible(self._open)
-            self._anim = HeightAnimator(self.body, self)
+            self.clip = Clip(self.body)
+            self.clip.setVisible(self._open)
+            outer.addWidget(self.clip)
+            self._anim = HeightAnimator(self.clip, self)
             self._render_chev()
         else:
             outer.addWidget(head)
-        outer.addWidget(self.body)
+            outer.addWidget(self.body)
 
     def add(self, w: QWidget | QLayout, stretch: int = 0) -> None:
         if isinstance(w, QLayout):
@@ -336,7 +383,7 @@ class Card(QFrame):
         self._open = not self._open
         if self._open:
             m = self.layout().contentsMargins()
-            self._anim.open(natural_height(self.body, self.width() - m.left() - m.right()))
+            self._anim.open(self.clip.heightForWidth(self.width() - m.left() - m.right()))
         else:
             self._anim.close()
         self._render_chev()
@@ -477,6 +524,7 @@ class Dropdown(QFrame):
         self.area.setVisible(False)
         lay.addWidget(self.area)
         self._anim = HeightAnimator(self.area, self)
+        self._anim.on_opened = self._show_current
         self._render()
 
     def is_open(self) -> bool:
@@ -497,11 +545,14 @@ class Dropdown(QFrame):
             card = card.parentWidget()
         base = card.height() if card is not None else self.height() * 3
         limit = max(300, min(base, 520))
+        self.area.verticalScrollBar().setValue(0)
         self._anim.open(min(need, limit), keep_fixed=True)
-        ch = self.choices.get(self.current)
-        if ch is not None:
-            QTimer.singleShot(0, lambda: self.area.ensureWidgetVisible(ch, 0, 40))
         self._render_state()
+
+    def _show_current(self) -> None:
+        ch = self.choices.get(self.current)
+        if ch is not None and self.area.verticalScrollBar().value() == 0:
+            self.area.ensureWidgetVisible(ch, 0, 12)
 
     def close_list(self) -> None:
         self._open = False
