@@ -57,6 +57,7 @@ jobs:
           QT_QPA_PLATFORM: windows
           QT_SCALE_FACTOR: ${{ matrix.scale }}
           PREVIEW_ONLY_CLICKS: "1"
+          PYTHONIOENCODING: utf-8
         run: python tools/ui_preview.py ../preview/win-${{ matrix.scale }}-${{ matrix.code }}
       - uses: actions/upload-artifact@v4
         if: always()
