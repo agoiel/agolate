@@ -42,7 +42,48 @@ def relayout(w: QWidget) -> None:
             lay.invalidate()
             lay.activate()
         p.updateGeometry()
+        if isinstance(p, ScrollContent):
+            p.schedule()
         p = p.parentWidget()
+
+
+class ScrollContent(QWidget):
+    """Содержимое окна прокрутки. Всегда получает полную высоту для своей ширины.
+
+    Сам QScrollArea иногда отдаёт содержимому только минимальную высоту, и тогда при
+    раскрытии карточек тексты наезжают друг на друга. Здесь высота пересчитывается
+    после каждого изменения раскладки.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._pending = False
+
+    def refit(self) -> None:
+        self._pending = False
+        lay = self.layout()
+        if lay is None:
+            return
+        lay.activate()
+        h = lay.totalHeightForWidth(self.width()) if lay.hasHeightForWidth() else -1
+        h = max(h, lay.totalSizeHint().height(), lay.totalMinimumSize().height())
+        if h != self.minimumHeight():
+            self.setMinimumHeight(h)
+
+    def schedule(self) -> None:
+        if not self._pending:
+            self._pending = True
+            QTimer.singleShot(0, self.refit)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if e.size().width() != e.oldSize().width():
+            self.schedule()
+
+    def event(self, e):
+        if e.type() == QEvent.Type.LayoutRequest:
+            self.schedule()
+        return super().event(e)
 
 
 def _repolish(w: QWidget) -> None:

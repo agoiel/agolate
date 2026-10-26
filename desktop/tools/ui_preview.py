@@ -51,6 +51,19 @@ def report(tag, dd):
         f"list need={dd.list.sizeHint().height()} got={dd.list.height()}")
 
 
+def squeezed(tag):
+    """Найти надписи, которым досталось меньше высоты, чем нужно (тогда они наезжают друг на друга)."""
+    from PySide6.QtWidgets import QLabel
+    bad = []
+    for lb in win.findChildren(QLabel):
+        if not lb.isVisible() or not lb.text() or lb.window() is not win:
+            continue
+        need = lb.heightForWidth(lb.width()) if lb.wordWrap() else lb.sizeHint().height()
+        if lb.height() < need - 2:
+            bad.append(f"'{lb.text()[:28]}' {lb.height()}<{need}")
+    log(f"[{tag}] squeezed labels: {len(bad)} " + "; ".join(bad[:6]))
+
+
 def log(msg):
     print(msg)
     LOG.append(msg)
@@ -78,6 +91,7 @@ settle()
 
 translator = next(d for d in win.findChildren(Dropdown) if "deepl" in d.choices)
 show(translator)
+squeezed("start")
 report("before", translator)
 click(translator.header)
 report("opened", translator)
@@ -93,6 +107,7 @@ settle()
 click(choice)
 log(f"chosen: {translator.current} popup visible after choose: {translator.popup.isVisible()}")
 report("chosen", translator)
+squeezed("after choosing DeepL")
 win.grab().save(str(out / "click_translator_chosen.png"))
 # второй раз — открыть и закрыть повторным нажатием (Esc)
 click(translator.header)
@@ -104,7 +119,17 @@ collapse_heads = [w for w in cards[0].findChildren(Clickable) if w.objectName() 
 show(cards[0])
 click(collapse_heads[0])
 show(cards[0])
-log(f"tuning open: {cards[0].body.isVisible()} need={cards[0].body.sizeHint().height()} got={cards[0].body.height()}")
+log(f"tuning open: {cards[0].body.isVisible()}")
+squeezed("tuning open")
+for c in cards[1:]:
+    hd = [w for w in c.findChildren(Clickable) if w.objectName() == "collapseHeader"][0]
+    show(c)
+    click(hd)
+squeezed("all cards open")
+win.resize(420, 760)
+settle()
+squeezed("narrow window")
+win.grab().save(str(out / "click_narrow.png"))
 win.grab().save(str(out / "click_tuning_open.png"))
 win.close()
 settle()

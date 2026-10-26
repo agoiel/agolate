@@ -31,7 +31,8 @@ from .list_window import ListWindow
 from .overlay import OverlayWindow, paint_plates
 from .selector import SelectionWindow
 from .widgets import (Card, Columns, Dropdown, Field, FlowLayout, Hero, ResponsiveRow, Segmented, StatusChip,
-                      Stepper, SwitchRow, Tile, caption, label, pill, round_pixmap, set_pill)
+                      ScrollContent, Stepper, SwitchRow, Tile, caption, label, pill, relayout, round_pixmap,
+                      set_pill)
 
 # Описание переводчиков для списка (как в Android-версии)
 TRANSLATOR_INFO = [
@@ -167,7 +168,7 @@ class MainWindow(QWidget):
     # ================================================================ интерфейс
     def _build(self) -> None:
         """Собрать содержимое окна (заново — при смене темы)."""
-        content = QWidget()
+        content = ScrollContent()
         content.setObjectName("content")
         # окно прокрутки отдаёт содержимому его полную высоту, а не минимальную — иначе тексты наезжают
         content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
@@ -342,6 +343,9 @@ class MainWindow(QWidget):
         while self.keys_lay.count():
             it = self.keys_lay.takeAt(0)
             if it.widget():
+                # сразу убрать из окна, иначе старая подсказка на миг рисуется поверх новых полей
+                it.widget().hide()
+                it.widget().setParent(None)
                 it.widget().deleteLater()
         name = self.cfg["translator"]
         t = self.cfg["translators"].setdefault(name, {})
@@ -403,6 +407,7 @@ class MainWindow(QWidget):
             field("Адрес сервера", "base_url", "https://api.openai.com/v1")
             field("API-ключ", "api_key", "sk-…", secret=True)
             field("Модель", "model", "gpt-4o-mini")
+        relayout(self.keys_box)
 
     # ---------------------------------------------------------------- тайтл и глоссарий
     def _build_title(self) -> Card:
