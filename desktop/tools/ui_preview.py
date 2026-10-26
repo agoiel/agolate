@@ -17,6 +17,19 @@ from app.ui.widgets import Card, Dropdown  # noqa: E402
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "out")
 out.mkdir(parents=True, exist_ok=True)
+import faulthandler  # noqa: E402
+import traceback  # noqa: E402
+
+_fault = open(out / "fault.txt", "w")  # noqa: SIM115
+faulthandler.enable(_fault)
+
+
+def _hook(t, v, tb):
+    (out / "exception.txt").write_text("".join(traceback.format_exception(t, v, tb)), encoding="utf-8")
+    sys.__excepthook__(t, v, tb)
+
+
+sys.excepthook = _hook
 app, cfg = create_app()
 
 
