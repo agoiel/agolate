@@ -88,6 +88,19 @@ def squeezed(tag):
     log(f"[{tag}] squeezed labels: {len(bad)} " + "; ".join(bad[:6]))
 
 
+def stretched(tag):
+    """Карточки, которые выше своего содержимого (пустое место внутри)."""
+    bad = []
+    for c in win.findChildren(Card):
+        if not c.isVisible():
+            continue
+        lay = c.layout()
+        need = lay.totalHeightForWidth(c.width()) if lay.hasHeightForWidth() else lay.totalSizeHint().height()
+        if c.height() > need + 6:
+            bad.append(f"{c.findChildren(QLabel)[1].text()[:16]} {c.height()}>{need}")
+    log(f"[{tag}] stretched cards: {len(bad)} {'; '.join(bad)}")
+
+
 def log(msg):
     print(msg)
     LOG.append(msg)
@@ -195,6 +208,7 @@ for c in cards[1:]:
     click(hd)
     QTest.qWait(400)
 squeezed("all cards open")
+stretched("all cards open")
 # список в «Тонкой настройке» (движок OCR) внутри раскрытой карточки
 eng = [s for s in win.findChildren(Select) if s.findData("easyocr") >= 0][0]
 show(eng)
@@ -204,6 +218,7 @@ settle()
 show(eng)
 log(f"engine select open: area h={eng.area.height()} visible={eng.area.isVisible()}")
 squeezed("engine select open")
+stretched("engine select open")
 win.grab().save(str(out / "click_engine_select.png"))
 click(eng.header)
 QTest.qWait(400)
@@ -215,7 +230,7 @@ for sw in [w for w in win.findChildren(Toggle) if w.isVisible()]:
     x0 = sw.mapTo(win, QPoint(0, 0))
     click(sw)
     QTest.qWait(250)
-    if sw.mapTo(win, QPoint(0, 0)) != x0:
+    if sw.mapTo(win, QPoint(0, 0)).x() != x0.x():
         bad_moves.append(sw.parentWidget().findChildren(QLabel)[0].text()[:20] if sw.parentWidget() else "?")
     click(sw)
     QTest.qWait(250)

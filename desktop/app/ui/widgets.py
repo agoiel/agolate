@@ -1148,13 +1148,19 @@ class Columns(QWidget):
         # removeWidget, а не takeAt: старая запись раскладки должна удалиться сразу, иначе Qt
         # продолжает обновлять размеры через неё, и перенесённые карточки перестают расти
         for col in self.cols:
+            lay = col.layout()
             for w in self.widgets:
-                col.layout().removeWidget(w)
+                lay.removeWidget(w)
+            while lay.count():  # остались только распорки
+                lay.takeAt(0)
         heights = [0] * n
         for w in self.widgets:
             i = heights.index(min(heights))
             self.cols[i].layout().addWidget(w)
             heights[i] += w.sizeHint().height() + 14
+        # распорка внизу: карточки не растягиваются, если соседняя колонка длиннее
+        for col in self.cols:
+            col.layout().addStretch(1)
         self.cols[1].setVisible(n > 1)
         relayout(self)
 
