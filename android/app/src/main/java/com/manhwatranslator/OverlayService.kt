@@ -20,8 +20,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import com.manhwatranslator.core.DevLog
 import com.manhwatranslator.core.I18n
 import com.manhwatranslator.core.PageResult
+import com.manhwatranslator.core.Timings
 import com.manhwatranslator.core.tr
 import com.manhwatranslator.core.trf
 import com.manhwatranslator.core.Pipeline
@@ -62,6 +64,7 @@ class OverlayService : Service() {
     private var translationView: TranslationView? = null
     private var selectView: RegionSelectView? = null
     private var menu: ButtonMenu? = null
+    private var debugPanel: DebugPanel? = null
     private var busy = false
 
     // ---- режим Live
@@ -231,6 +234,7 @@ class OverlayService : Service() {
 
     private fun removeViews() {
         closeMenu()
+        closeDebugPanel()
         listOf<View?>(selectView, translationView, button).forEach { v ->
             if (v != null) try { wm.removeView(v) } catch (_: Exception) {}
         }
@@ -310,6 +314,7 @@ class OverlayService : Service() {
         if (settings.region != null) items.add(tr("Показать зону") to { showZone() })
         if (translationView?.hasContent == true) items.add(tr("Убрать перевод") to { translationView?.clear(); updateButton() })
         items.add((if (live) tr("Режим: Live → Скриншот") else tr("Режим: Скриншот → Live")) to { switchMode() })
+        if (settings.devMode && settings.region != null) items.add(tr("Сравнить: по очереди и параллельно") to { compareModes() })
         items.add(tr("Остановить переводчик") to { stopEverything() })
 
         val m = ButtonMenu(this, items) { closeMenu() }
@@ -431,11 +436,14 @@ class OverlayService : Service() {
         updateButton()
 
         // Прячем свои окна, чтобы они не попали в снимок, и ждём новый кадр
+        val timings = Timings()
         button?.visibility = View.INVISIBLE
+        debugWrap?.visibility = View.INVISIBLE
         translationView?.clear()
         main.postDelayed({
             val full = cap.capture()
             button?.visibility = View.VISIBLE
+            debugWrap?.visibility = View.VISIBLE
             if (full == null) {
                 busy = false
                 updateButton()
@@ -451,10 +459,12 @@ class OverlayService : Service() {
             }
             val crop = Bitmap.createBitmap(full, r.left, r.top, r.width(), r.height())
             if (crop !== full) full.recycle()
+            timings.mark(tr("снимок"))
             worker.execute {
                 val res = try {
-                    pipeline.process(crop, settings)
+                    pipeline.process(crop, settings, timings = timings, live = fromLive)
                 } catch (e: Exception) {
+                    if (settings.devMode) DevLog.append(this, android.util.Log.getStackTraceString(e))
                     PageResult(error = trf("Ошибка: %s", e.message))
                 }
                 crop.recycle()
@@ -465,14 +475,24 @@ class OverlayService : Service() {
 
     private fun showResult(res: PageResult, region: Rect, fromLive: Boolean) {
         busy = false
-        translationView?.show(res.bubbles, region, settings.maxFontSp)
+        val dev = settings.devMode
+        val boxes = if (dev && settings.debugBoxes) res.debug?.passes.orEmpty() else emptyList()
+        translationView?.show(res.bubbles, region, settings.maxFontSp, boxes)
+        if (dev) {
+            val report = res.debug?.report() ?: res.error
+            showDebugPanel(report, region)
+            DevLog.append(this, report)
+        } else {
+            closeDebugPanel()
+        }
         if (fromLive && liveOn) {
             // запоминаем кадр уже с переводом: дальше следим, не сдвинулась ли страница
             liveShown = true
             baseThumb = null
         }
         updateButton()
-        val diag = if (res.ocrStats.isNotEmpty()) trf(" (строк: %s)", res.ocrStats) else ""
+        // техническая строка — только в режиме разработчика (там есть своя панель)
+        val diag = ""
         when {
             res.blankFrame -> { if (fromLive) setLive(false); toast(res.error) }
             res.error.isNotEmpty() -> toast(res.error)
@@ -480,6 +500,92 @@ class OverlayService : Service() {
             res.bubbles.isEmpty() -> toast(tr("Текст не найден в выделенной области") + diag)
             res.bubbles.none { it.translation.isNotBlank() } -> toast(tr("Нечего переводить") + diag)
         }
+    }
+
+    // ---------------------------------------------------------------- режим разработчика
+    private fun showDebugPanel(text: String, region: Rect) {
+        var panel = debugPanel
+        if (panel == null) {
+            panel = DebugPanel(this,
+                onCopy = { copy(it) },
+                onClose = { closeDebugPanel() })
+            val p = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT, 0)
+            val m = dpF(12f).toInt()
+            val screenH = resources.displayMetrics.heightPixels
+            // панель — с той стороны, где меньше перевода: зона внизу — панель сверху, и наоборот
+            p.gravity = (if (region.centerY() > screenH * 0.6f) Gravity.TOP else Gravity.BOTTOM) or Gravity.START
+            p.horizontalMargin = 0f
+            p.x = 0
+            p.y = m * 4
+            val wrap = android.widget.FrameLayout(this).apply {
+                setPadding(m, 0, m, 0)
+                addView(panel)
+            }
+            try {
+                wm.addView(wrap, p)
+            } catch (_: Exception) {
+                return
+            }
+            debugPanel = panel
+            debugWrap = wrap
+        }
+        panel.set(text)
+    }
+
+    private var debugWrap: View? = null
+
+    private fun closeDebugPanel() {
+        debugWrap?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        debugWrap = null
+        debugPanel = null
+    }
+
+    private fun copy(text: String) {
+        val cm = getSystemService(android.content.ClipboardManager::class.java)
+        cm?.setPrimaryClip(android.content.ClipData.newPlainText("agolate", text))
+        toast(tr("Скопировано"))
+    }
+
+    /** Распознать текущую зону по очереди и параллельно и показать, что быстрее и совпал ли результат. */
+    private fun compareModes() {
+        val region = settings.region ?: return
+        val cap = capturer ?: return
+        if (busy) return
+        busy = true
+        updateButton()
+        button?.visibility = View.INVISIBLE
+        debugWrap?.visibility = View.INVISIBLE
+        translationView?.clear()
+        toast(tr("Сравниваю… это займёт несколько секунд"))
+        main.postDelayed({
+            val full = cap.capture()
+            button?.visibility = View.VISIBLE
+            debugWrap?.visibility = View.VISIBLE
+            val r = Rect(region)
+            if (full == null || !r.intersect(0, 0, full.width, full.height) || r.width() < 10 || r.height() < 10) {
+                full?.recycle()
+                busy = false
+                updateButton()
+                toast(tr("Нет кадра экрана, попробуйте ещё раз"))
+                return@postDelayed
+            }
+            val crop = Bitmap.createBitmap(full, r.left, r.top, r.width(), r.height())
+            if (crop !== full) full.recycle()
+            worker.execute {
+                val text = try {
+                    tr("Сравнение распознавания") + "\n" + pipeline.compare(crop, settings).report()
+                } catch (e: Exception) {
+                    trf("Ошибка: %s", e.message)
+                }
+                crop.recycle()
+                DevLog.append(this, text)
+                main.post {
+                    busy = false
+                    updateButton()
+                    showDebugPanel(text, r)
+                }
+            }
+        }, 220)
     }
 
     private fun toast(msg: String) {

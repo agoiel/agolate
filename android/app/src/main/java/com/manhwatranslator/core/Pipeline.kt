@@ -51,9 +51,13 @@ class Pipeline(private val ctx: Context) {
         loadedStamp = TitleStore.file(ctx, id).lastModified()
     }
 
-    /** Вызывать из фонового потока. */
+    /**
+     * Вызывать из фонового потока. timings — отметки, начатые раньше (например, снимок экрана);
+     * live — запуск из режима Live (меньше одновременных проходов, чтобы не грелся телефон).
+     */
     @Synchronized
-    fun process(bitmap: Bitmap, s: Settings, translate: Boolean = true): PageResult {
+    fun process(bitmap: Bitmap, s: Settings, translate: Boolean = true, timings: Timings = Timings(),
+                live: Boolean = false): PageResult {
         val src = Languages.src(s.sourceLang)
         val tgt = Languages.tgt(s.targetLang)
         val screen = s.contentMode == "screen"
@@ -64,10 +68,13 @@ class Pipeline(private val ctx: Context) {
             return PageResult(blankFrame = true, error = tr("Снимок области получился однотонным (обычно чёрным). Похоже, приложение-читалка запрещает снимки экрана — так делают некоторые официальные приложения. Откройте тайтл в браузере или другой читалке."))
         }
         val ocrRes = try {
-            ocr.recognize(bitmap, src, s.ocrMode)
+            ocr.recognize(bitmap, src, s.ocrMode, s.parallelOcr, live)
         } catch (e: OcrException) {
-            return PageResult(error = e.message ?: tr("Ошибка распознавания"))
+            timings.mark(tr("распознавание"))
+            val msg = e.message ?: tr("Ошибка распознавания")
+            return PageResult(error = msg, debug = DebugInfo(stages = timings.stages(), totalMs = timings.totalMs(), error = msg))
         }
+        timings.mark(tr("распознавание"))
         val lines = ocrRes.lines
         val stats = ocrRes.stats.entries.joinToString(" · ") { (k, v) -> "${Ocr.scriptName(k)} $v" }
         val img = PixelImage.fromBitmap(bitmap)
@@ -85,8 +92,11 @@ class Pipeline(private val ctx: Context) {
             b.lang = Languages.detect(b.text, src).code
             if (screen) b.kind = "screen"
         }
+        timings.mark(tr("облака"))
         val t1 = System.currentTimeMillis()
-        if (!translate) return PageResult(bubbles, ocrMs = t1 - t0, lineCount = lines.size, ocrStats = stats)
+        fun debug(hits: Int = 0, error: String = "") = DebugInfo(ocrRes.passes, timings.stages(), timings.totalMs(),
+            ocrRes.threads, ocrRes.merge, lines.size, bubbles.size, hits, error)
+        if (!translate) return PageResult(bubbles, ocrMs = t1 - t0, lineCount = lines.size, ocrStats = stats, debug = debug())
 
         var hits = 0
         val todo = ArrayList<Bubble>()
@@ -110,7 +120,49 @@ class Pipeline(private val ctx: Context) {
             }
             persistTitle(s)
         }
-        return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size, stats)
+        timings.mark(tr("перевод"))
+        return PageResult(bubbles, error, hits, t1 - t0, System.currentTimeMillis() - t1, lines.size, stats,
+            debug = debug(hits, error))
+    }
+
+    /** Итог сравнения «по очереди» и «параллельно» на одной и той же картинке. */
+    class Comparison(val sequentialMs: Long, val parallelMs: Long, val threads: Int, val same: Boolean,
+                     val sequentialLines: Int, val parallelLines: Int, val differences: Int) {
+        fun report(): String = buildString {
+            append(trf("По очереди: %s мс", sequentialMs)).append('\n')
+            append(trf("Параллельно (×%s): %s мс", threads, parallelMs)).append('\n')
+            if (parallelMs > 0 && sequentialMs > 0) {
+                val k = sequentialMs.toFloat() / parallelMs
+                append(if (k >= 1f) trf("Быстрее в %s раза", String.format("%.1f", k))
+                       else trf("Медленнее в %s раза", String.format("%.1f", 1f / k))).append('\n')
+            }
+            append(if (same) trf("Результат совпал: %s строк", parallelLines)
+                   else trf("Результат различается: %s и %s строк, расхождений %s", sequentialLines, parallelLines, differences))
+        }
+    }
+
+    /**
+     * Распознать одну картинку по очереди и параллельно и сравнить время и результат.
+     * Сначала один короткий прогон «на прогрев», чтобы загрузка моделей не попала в замер.
+     */
+    @Synchronized
+    fun compare(bitmap: Bitmap, s: Settings): Comparison {
+        val src = Languages.src(s.sourceLang)
+        try { ocr.recognize(bitmap, src, Enhance.FAST, parallel = true) } catch (_: OcrException) {}
+        fun run(parallel: Boolean): Pair<Long, OcrResult?> {
+            val t = System.nanoTime()
+            val r = try { ocr.recognize(bitmap, src, s.ocrMode, parallel) } catch (_: OcrException) { null }
+            return (System.nanoTime() - t) / 1_000_000 to r
+        }
+        val (seqMs, seq) = run(false)
+        val (parMs, par) = run(true)
+        fun keys(r: OcrResult?) = r?.lines.orEmpty().map {
+            "${it.text}|${(it.box.x / 4).toInt()}|${(it.box.y / 4).toInt()}|${(it.box.w / 4).toInt()}|${(it.box.h / 4).toInt()}"
+        }.sorted()
+        val a = keys(seq)
+        val b = keys(par)
+        val diff = (a - b.toSet()).size + (b - a.toSet()).size
+        return Comparison(seqMs, parMs, par?.threads ?: 1, a == b, a.size, b.size, diff)
     }
 
     /** Однотонный кадр: разброс яркости почти нулевой. */

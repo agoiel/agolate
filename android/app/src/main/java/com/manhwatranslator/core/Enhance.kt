@@ -41,28 +41,49 @@ object Enhance {
         if (abs(k - 1f) < 0.01f) src
         else Bitmap.createScaledBitmap(src, (src.width * k).roundToInt(), (src.height * k).roundToInt(), true)
 
-    /** Варианты картинки. Первый — сам оригинал. */
-    fun variants(src: Bitmap, mode: Int): List<Bitmap> {
-        if (mode <= FAST) return listOf(src)
+    /** Какие варианты картинки распознаются в этом режиме. Первый — сам оригинал. */
+    fun variantKeys(mode: Int): List<String> = when {
+        mode <= FAST -> listOf("orig")
+        mode < MAX -> listOf("orig", "inv", "local")
+        else -> listOf("orig", "inv", "local", "local_inv", "color")
+    }
+
+    fun variantName(key: String): String = when (key) {
+        "orig" -> tr("оригинал")
+        "inv" -> tr("инверсия")
+        "local" -> tr("локальный контраст")
+        "local_inv" -> tr("инверсия контраста")
+        "color" -> tr("цветовой контраст")
+        else -> key
+    }
+
+    /**
+     * Исходная картинка и общие для вариантов промежуточные данные. Они считаются
+     * один раз и по требованию, поэтому варианты можно готовить из разных потоков.
+     */
+    class Source(val src: Bitmap) {
         val w = src.width
         val h = src.height
-        val px = IntArray(w * h)
-        src.getPixels(px, 0, w, 0, 0, w, h)
-        val gray = IntArray(w * h) { i ->
-            val c = px[i]
-            (299 * Color.red(c) + 587 * Color.green(c) + 114 * Color.blue(c)) / 1000
+        val px: IntArray by lazy { IntArray(w * h).also { src.getPixels(it, 0, w, 0, 0, w, h) } }
+        private val gray: IntArray by lazy {
+            IntArray(w * h) { i ->
+                val c = px[i]
+                (299 * Color.red(c) + 587 * Color.green(c) + 114 * Color.blue(c)) / 1000
+            }
         }
-        val out = ArrayList<Bitmap>()
-        out.add(src)
-        out.add(toBitmap(invert(stretch(gray)), w, h))
+        /** Серая картинка с растянутым контрастом, инвертированная */
+        val invStretched: IntArray by lazy { invert(stretch(gray.copyOf())) }
         val radius = (min(w, h) / 25).coerceIn(12, 48)
-        val local = localContrast(gray, w, h, radius)
-        out.add(toBitmap(local, w, h))
-        if (mode >= MAX) {
-            out.add(toBitmap(invert(local.copyOf()), w, h))
-            out.add(toBitmap(colorContrast(px, w, h, radius), w, h))
-        }
-        return out
+        val local: IntArray by lazy { localContrast(invStretched, w, h, radius) }
+    }
+
+    /** Подготовить вариант картинки. Для "orig" возвращается сама исходная картинка. */
+    fun make(key: String, s: Source): Bitmap = when (key) {
+        "inv" -> toBitmap(s.invStretched, s.w, s.h)
+        "local" -> toBitmap(s.local, s.w, s.h)
+        "local_inv" -> toBitmap(invert(s.local.copyOf()), s.w, s.h)
+        "color" -> toBitmap(colorContrast(s.px, s.w, s.h, s.radius), s.w, s.h)
+        else -> s.src
     }
 
     // ---------------------------------------------------------------- преобразования
@@ -168,7 +189,7 @@ object Enhance {
      * строка из другого прохода добавляется, если на её месте ничего нет, и заменяет найденное,
      * если в ней заметно больше букв.
      */
-    fun merge(passes: List<List<TextLine>>): List<TextLine> {
+    fun merge(passes: List<List<TextLine>>, stats: MergeStats? = null): List<TextLine> {
         val result = ArrayList(passes.firstOrNull() ?: emptyList())
         for (lines in passes.drop(1)) {
             for (cand in lines) {
@@ -176,8 +197,13 @@ object Enhance {
                 val compact = cand.text.replace(" ", "")
                 if (n < 2 || n < 0.5f * compact.length) continue   // мусор с узоров фона
                 val hits = result.indices.filter { overlap(result[it].box, cand.box) > 0.4f }
-                if (hits.isEmpty()) result.add(cand)
-                else if (hits.size == 1 && n > 1.3f * letters(result[hits[0]].text)) result[hits[0]] = cand
+                if (hits.isEmpty()) {
+                    result.add(cand)
+                    stats?.let { it.added++ }
+                } else if (hits.size == 1 && n > 1.3f * letters(result[hits[0]].text)) {
+                    result[hits[0]] = cand
+                    stats?.let { it.replaced++ }
+                }
             }
         }
         return result

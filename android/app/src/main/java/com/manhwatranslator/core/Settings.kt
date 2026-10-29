@@ -49,6 +49,13 @@ class Settings(ctx: Context) {
     /** shot — перевод по нажатию; live — автоматически, когда страница перестаёт двигаться */
     var translateMode by str("translate_mode", "shot")
 
+    /** Режим разработчика: время этапов, проходы распознавания, журнал */
+    var devMode by bool("dev_mode", false)
+    /** Проходы распознавания идут одновременно */
+    var parallelOcr by bool("parallel_ocr", true)
+    /** В режиме разработчика рисовать рамки распознанных строк */
+    var debugBoxes by bool("debug_boxes", true)
+
     var region: Rect?
         get() {
             val s = p.getString("region", null) ?: return null

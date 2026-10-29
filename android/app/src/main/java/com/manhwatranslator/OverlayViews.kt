@@ -20,6 +20,8 @@ import android.view.ViewConfiguration
 import com.manhwatranslator.core.tr
 import com.manhwatranslator.core.trf
 import com.manhwatranslator.core.Bubble
+import com.manhwatranslator.core.DebugInfo
+import com.manhwatranslator.core.PassInfo
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -293,6 +295,12 @@ class PlateRenderer(private val ctx: Context) {
 /** Рисует плашки с переводом поверх облаков и рамку зоны. Не перехватывает касания. */
 class TranslationView(ctx: Context) : View(ctx) {
     private var bubbles: List<Bubble> = emptyList()
+    /** Режим разработчика: рамки строк, найденных каждым проходом */
+    private var passes: List<PassInfo> = emptyList()
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = ctx.dpF(1.5f)
+    }
     private var region = Rect()
     private var maxFontPx = ctx.dpF(16f)
     private val renderer = PlateRenderer(ctx)
@@ -315,8 +323,9 @@ class TranslationView(ctx: Context) : View(ctx) {
 
     val hasContent: Boolean get() = bubbles.any { it.translation.isNotBlank() }
 
-    fun show(bubbles: List<Bubble>, region: Rect, maxFontSp: Int) {
+    fun show(bubbles: List<Bubble>, region: Rect, maxFontSp: Int, debugPasses: List<PassInfo> = emptyList()) {
         this.bubbles = bubbles
+        this.passes = debugPasses
         this.region = Rect(region)
         this.maxFontPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, maxFontSp.toFloat(), context.resources.displayMetrics)
         invalidate()
@@ -324,6 +333,7 @@ class TranslationView(ctx: Context) : View(ctx) {
 
     fun clear() {
         bubbles = emptyList()
+        passes = emptyList()
         invalidate()
     }
 
@@ -350,8 +360,21 @@ class TranslationView(ctx: Context) : View(ctx) {
             c.drawRoundRect(pill, context.dpF(14f), context.dpF(14f), labelBg)
             c.drawText(label, pill.left + pad, pill.centerY() - (labelText.descent() + labelText.ascent()) / 2, labelText)
         }
-        if (bubbles.isEmpty()) return
-        renderer.draw(c, bubbles, (region.left - loc[0]).toFloat(), (region.top - loc[1]).toFloat(), maxFontPx)
+        val ox = (region.left - loc[0]).toFloat()
+        val oy = (region.top - loc[1]).toFloat()
+        if (bubbles.isNotEmpty()) renderer.draw(c, bubbles, ox, oy, maxFontPx)
+        if (passes.isNotEmpty()) {
+            // рамки поверх плашек: каждый вариант картинки — своим цветом
+            val order = passes.map { it.variant }.distinct()
+            for (p in passes) {
+                val i = order.indexOf(p.variant).coerceAtLeast(0)
+                boxPaint.color = DebugInfo.passColors[i % DebugInfo.passColors.size]
+                val inset = i * context.dpF(1.5f)
+                for (l in p.lines) {
+                    c.drawRect(ox + l.box.x - inset, oy + l.box.y - inset, ox + l.box.x2 + inset, oy + l.box.y2 + inset, boxPaint)
+                }
+            }
+        }
     }
 }
 
@@ -395,5 +418,61 @@ class ButtonMenu(ctx: Context, items: List<Pair<String, () -> Unit>>, private va
             return true
         }
         return super.onTouchEvent(e)
+    }
+}
+
+// ==================================================================== панель режима разработчика
+
+/**
+ * Небольшая панель с отладочной информацией (только в режиме разработчика).
+ * Свёрнута — одна строка с общим временем; нажатие разворачивает подробности.
+ */
+@SuppressLint("ViewConstructor")
+class DebugPanel(ctx: Context, private val onCopy: (String) -> Unit, private val onClose: () -> Unit) :
+    android.widget.LinearLayout(ctx) {
+    private val body = android.widget.TextView(ctx).apply {
+        textSize = 12f
+        typeface = Typeface.MONOSPACE
+        setTextColor(Brand.CREAM)
+        setLineSpacing(0f, 1.1f)
+    }
+    private var full = ""
+    private var expanded = false
+
+    init {
+        orientation = VERTICAL
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = ctx.dpF(14f)
+            setColor(Color.argb(235, 0x3D, 0x2B, 0x28))
+            setStroke(ctx.dpF(1f).toInt(), Brand.SAND)
+        }
+        val pad = ctx.dpF(10f).toInt()
+        setPadding(pad, pad, pad, ctx.dpF(4f).toInt())
+        addView(body)
+        body.setOnClickListener { expanded = !expanded; render() }
+        val row = android.widget.LinearLayout(ctx).apply { gravity = android.view.Gravity.END }
+        fun action(title: String, block: () -> Unit) = android.widget.TextView(ctx).apply {
+            text = title
+            textSize = 13f
+            typeface = Fonts.medium
+            setTextColor(Brand.SAND)
+            val h = ctx.dpF(10f).toInt()
+            val v = ctx.dpF(6f).toInt()
+            setPadding(h, v, h, v)
+            setOnClickListener { block() }
+        }
+        row.addView(action(tr("Подробнее")) { expanded = !expanded; render() })
+        row.addView(action(tr("Копировать")) { onCopy(full) })
+        row.addView(action(tr("Скрыть")) { onClose() })
+        addView(row)
+    }
+
+    fun set(text: String) {
+        full = text
+        render()
+    }
+
+    private fun render() {
+        body.text = if (expanded) full else full.lineSequence().take(2).joinToString("\n")
     }
 }

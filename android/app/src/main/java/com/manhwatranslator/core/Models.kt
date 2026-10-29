@@ -45,6 +45,8 @@ class PageResult(
     val ocrStats: String = "",
     /** Кадр однотонный — скорее всего, приложение запрещает снимки экрана */
     val blankFrame: Boolean = false,
+    /** Подробности для режима разработчика */
+    val debug: DebugInfo? = null,
 )
 
 /** Пиксели картинки для анализа фона (ARGB, построчно). */

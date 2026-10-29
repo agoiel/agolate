@@ -23,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.manhwatranslator.core.DevLog
 import com.manhwatranslator.core.Enhance
 import com.manhwatranslator.core.GlossaryStore
 import com.manhwatranslator.core.I18n
@@ -87,6 +88,7 @@ class MainActivity : Activity() {
         content.addView(buildTranslator(), lp().margins(this, top = 14))
         content.addView(buildGlossary(), lp().margins(this, top = 14))
         content.addView(buildTuning(), lp().margins(this, top = 14))
+        content.addView(buildDeveloper(), lp().margins(this, top = 14))
         content.addView(ui.caption(tr("agolate 0.1 · распознавание: Google ML Kit")).apply {
             gravity = Gravity.CENTER
             alpha = 0.8f
@@ -554,6 +556,66 @@ class MainActivity : Activity() {
         body.addView(SwitchRow(this, tr("Пропускать обрезанное"), tr("Текст, который режет край области"), s.skipCut) {
             s.skipCut = it
         }, lp().margins(this, top = 2))
+        card.addView(body)
+
+        header.setOnClickListener {
+            val open = body.visibility != View.VISIBLE
+            body.visibility = if (open) View.VISIBLE else View.GONE
+            chevron.animate().rotation(if (open) 180f else 0f).setDuration(180).start()
+        }
+        return card
+    }
+
+    // ================================================================ для разработчиков
+    private fun buildDeveloper(): View {
+        val card = ui.card()
+        val header = ui.horizontal().apply { isClickable = true }
+        header.addView(ui.cardHeader(tr("Для разработчиков"), R.drawable.ic_code,
+            tr("Отладочная информация и проверка скорости")), lp(0, weight = 1f))
+        val chevron = ui.icon(R.drawable.ic_chevron, T.c.primary, 22)
+        header.addView(chevron)
+        card.addView(header)
+
+        val body = ui.vertical().apply { visibility = View.GONE }
+        val extra = ui.vertical()
+        body.addView(SwitchRow(this, tr("Режим разработчика"),
+            tr("Время каждого этапа, проходы распознавания, рамки строк и журнал"), s.devMode) {
+            s.devMode = it
+            extra.visibility = if (it) View.VISIBLE else View.GONE
+        }, lp().margins(this, top = 12))
+        body.addView(SwitchRow(this, tr("Параллельное распознавание"),
+            tr("Проходы распознавания идут одновременно — быстрее на многоядерных телефонах"), s.parallelOcr) {
+            s.parallelOcr = it
+        }, lp().margins(this, top = 2))
+
+        extra.visibility = if (s.devMode) View.VISIBLE else View.GONE
+        extra.addView(SwitchRow(this, tr("Рамки распознанных строк"),
+            tr("Поверх страницы, своим цветом для каждого прохода"), s.debugBoxes) {
+            s.debugBoxes = it
+        }, lp().margins(this, top = 2))
+        extra.addView(ui.caption(tr("После перевода внизу экрана появится панель с подробностями. Сравнить скорость «по очереди» и «параллельно» можно в меню плавающей кнопки (долгое нажатие).")),
+            lp().margins(this, top = 8))
+        val row = ui.horizontal()
+        val copyBtn = PillButton(this, tr("Копировать журнал"), R.drawable.ic_link, PillStyle.TONAL, 44)
+        copyBtn.onClick {
+            val log = DevLog.read(this)
+            if (log.isBlank()) {
+                toast(tr("Журнал пуст: включите режим разработчика и выполните перевод"))
+            } else {
+                getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("agolate log", log))
+                toast(tr("Журнал скопирован"))
+            }
+        }
+        row.addView(copyBtn, lp(0, weight = 1f))
+        val clearBtn = PillButton(this, tr("Очистить"), R.drawable.ic_refresh, PillStyle.TONAL, 44)
+        clearBtn.onClick {
+            DevLog.clear(this)
+            toast(tr("Журнал очищен"))
+        }
+        row.addView(clearBtn, lp(0, weight = 1f).margins(this, start = 8))
+        extra.addView(row, lp().margins(this, top = 12))
+        body.addView(extra)
         card.addView(body)
 
         header.setOnClickListener {

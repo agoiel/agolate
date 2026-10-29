@@ -54,13 +54,18 @@ object Dialogs {
         val c = T.c
         val box = ui.vertical().apply { setPadding(ctx.dp(20), ctx.dp(20), ctx.dp(20), ctx.dp(16)) }
         box.addView(ui.text(tr("Результат"), 20f, c.text, Fonts.medium))
-        val stats = buildString {
-            val n = res.bubbles.count { it.translation.isNotBlank() }
-            append(trf("Строк: %s · облаков: %s · OCR %s мс · перевод %s мс", res.lineCount, n, res.ocrMs, res.translateMs))
-            if (res.cacheHits > 0) append(trf(" · из кэша %s", res.cacheHits))
-            if (res.ocrStats.isNotEmpty()) append("\n" + trf("Распознаватели: %s", res.ocrStats))
+        val n = res.bubbles.count { it.translation.isNotBlank() }
+        // подробности — только в режиме разработчика
+        val stats = if (Settings(ctx).devMode) res.debug?.report() ?: "" else trf("Переведено облаков: %s", n)
+        if (stats.isNotEmpty()) {
+            box.addView(ui.caption(stats).apply {
+                if (Settings(ctx).devMode) {
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    textSize = 11.5f
+                    setTextIsSelectable(true)
+                }
+            }, lp().margins(ctx, top = 2))
         }
-        box.addView(ui.caption(stats), lp().margins(ctx, top = 2))
 
         val list = ui.vertical()
         // переведённый скриншот: плашки с переводом прямо на картинке
