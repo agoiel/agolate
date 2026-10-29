@@ -46,6 +46,9 @@ DEFAULTS: dict = {
     "translate_mode": "shot",         # shot — перевод по кнопке | live — сам, когда страница остановилась
     "always_on_top": False,           # главное окно поверх всех окон
     "window_size": None,              # размер главного окна (запоминается)
+    "dev_mode": False,                # режим разработчика: время этапов, проходы, журнал
+    "parallel_ocr": True,             # проходы распознавания идут одновременно
+    "debug_boxes": True,              # в режиме разработчика — рамки распознанных строк
     "translators": {
         "yandex": {"api_key": "", "folder_id": ""},
         "lingva": {"base_url": "https://lingva.ml"},

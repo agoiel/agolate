@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import threading
 
 from PIL import Image
 
@@ -51,6 +52,9 @@ def _ensure_com() -> None:
 
 class WindowsOcrBackend(OcrBackend):
     name = "windows"
+    # распознавание Windows асинхронное и работает из нескольких потоков;
+    # у каждого потока свои экземпляры распознавателя
+    supports_parallel = True
 
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -68,12 +72,15 @@ class WindowsOcrBackend(OcrBackend):
                 "Выполните: pip install -r requirements.txt\n"
                 f"({e})"
             ) from e
-        self._engines: dict[str, object] = {}
+        self._local = threading.local()
 
     # ------------------------------------------------------------------
     def _engine(self, lang: str):
-        if lang in self._engines:
-            return self._engines[lang]
+        engines = getattr(self._local, "engines", None)
+        if engines is None:
+            engines = self._local.engines = {}
+        if lang in engines:
+            return engines[lang]
         from winrt.windows.globalization import Language
         from winrt.windows.media.ocr import OcrEngine
 
@@ -88,7 +95,7 @@ class WindowsOcrBackend(OcrBackend):
         engine = OcrEngine.try_create_from_language(Language(tag))
         if engine is None:
             raise OcrError(f"Не удалось запустить Windows OCR для «{tag}».")
-        self._engines[lang] = engine
+        engines[lang] = engine
         return engine
 
     # ------------------------------------------------------------------

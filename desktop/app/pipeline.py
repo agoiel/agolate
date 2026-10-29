@@ -8,9 +8,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from collections import OrderedDict, deque
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 from PIL import Image
@@ -19,13 +21,37 @@ from . import languages, titles
 from .bubbles import group_lines
 from .config import GLOSSARY_DIR, Config
 from .glossary import Glossary
-from .models import PageResult
+from .models import DebugInfo, PageResult, PassInfo
 from .ocr import OcrBackend, OcrError, OcrLanguageMissing, create_ocr, enhance
 from .translators import RateLimit, TranslateError, TranslateRequest, Translator, create_translator
 
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", "", text).lower()
+
+
+def parallelism(variants: int, live: bool = False) -> int:
+    """Сколько проходов распознавать одновременно: по числу ядер, не больше 3 (в Live — 2)."""
+    cores = os.cpu_count() or 2
+    return max(1, min(variants, cores - 1, 2 if live else 3))
+
+
+class _Stopwatch:
+    """Время этапов одного запуска."""
+
+    def __init__(self):
+        self.start = self.last = time.perf_counter()
+        self.stages: list[tuple[str, float]] = []
+
+    def mark(self, name: str) -> float:
+        now = time.perf_counter()
+        ms = (now - self.last) * 1000
+        self.stages.append((name, ms))
+        self.last = now
+        return ms
+
+    def total(self) -> float:
+        return (time.perf_counter() - self.start) * 1000
 
 
 class Pipeline:
@@ -40,6 +66,7 @@ class Pipeline:
         self.cache: OrderedDict[str, str] = OrderedDict()
         self.history: deque[tuple[str, str]] = deque(maxlen=titles.MAX_HISTORY)
         self._title_id: str | None = None
+        self._pool: ThreadPoolExecutor | None = None
 
     # ------------------------------------------------------------ сессия и тайтлы
     def reset_session(self) -> None:
@@ -107,28 +134,85 @@ class Pipeline:
                     self.glossary = None
         return self.glossary
 
+    # ------------------------------------------------------------ распознавание
+    def recognize(self, image: Image.Image, lang: str, mode: str, parallel: bool,
+                  live: bool = False) -> tuple[list, list[PassInfo], dict, int]:
+        """Все проходы распознавания → (строки, проходы, итог объединения, сколько шло одновременно).
+
+        Параллельно или по очереди — результат одинаковый: проходы не зависят друг от друга
+        и объединяются всегда в одном и том же порядке.
+        """
+        ocr = self.ocr
+        keys = enhance.variant_keys(mode)
+        src = enhance.Source(image)
+        threads = parallelism(len(keys), live) if parallel and ocr.supports_parallel else 1
+
+        def one(key: str) -> PassInfo:
+            t = time.perf_counter()
+            img = enhance.make(key, src)
+            prep = (time.perf_counter() - t) * 1000
+            t = time.perf_counter()
+            try:
+                lines = ocr.recognize(img, lang)
+            except OcrLanguageMissing:
+                raise
+            except OcrError as e:
+                return PassInfo(key, [], prep, (time.perf_counter() - t) * 1000, str(e))
+            return PassInfo(key, lines, prep, (time.perf_counter() - t) * 1000)
+
+        if threads > 1:
+            if self._pool is None:
+                self._pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="ocr")
+            futures = [self._pool.submit(one, k) for k in keys[:threads]]
+            # не больше threads проходов одновременно: остальные — по мере освобождения
+            passes: list[PassInfo | None] = [None] * len(keys)
+            pending = list(range(threads, len(keys)))
+            for i in range(len(keys)):
+                passes[i] = futures[i].result()
+                if pending:
+                    futures.append(self._pool.submit(one, keys[pending.pop(0)]))
+        else:
+            passes = [one(k) for k in keys]
+        stats: dict = {}
+        lines = enhance.merge([p.lines for p in passes], stats)
+        if not lines:
+            failed = next((p for p in passes if p.error), None)
+            if failed:
+                raise OcrError(failed.error)
+        return lines, passes, stats, threads
+
     # ------------------------------------------------------------ основная работа
-    def process(self, image: Image.Image, translate: bool = True) -> PageResult:
+    def process(self, image: Image.Image, translate: bool = True, live: bool = False) -> PageResult:
         cfg = self.cfg
         lang = cfg["source_lang"]
         info = languages.src(lang)
         result = PageResult(image_size=image.size)
         screen = cfg.get("content_mode") == "screen"
         t0 = time.perf_counter()
+        watch = _Stopwatch()
         self._sync_title()
 
         try:
             mode = cfg.get("ocr_mode", "thorough")
-            lines = enhance.merge([self.ocr.recognize(v, lang) for v in enhance.variants(image, mode)])
+            lines, passes, mstats, threads = self.recognize(
+                image, lang, mode, bool(cfg.get("parallel_ocr", True)), live)
         except OcrLanguageMissing as e:
             result.error = str(e)
             result.missing_ocr_lang = e.lang
             return result
         except OcrError as e:
             result.error = str(e)
+            watch.mark("распознавание")
+            result.debug = DebugInfo(stages=watch.stages, total_ms=watch.total(), error=str(e))
             return result
         t1 = time.perf_counter()
         result.timings["ocr"] = t1 - t0
+        watch.mark("распознавание")
+
+        def debug() -> DebugInfo:
+            return DebugInfo(passes=passes, stages=list(watch.stages), total_ms=watch.total(), threads=threads,
+                             added=mstats.get("added", 0), replaced=mstats.get("replaced", 0), lines=len(lines),
+                             bubbles=len(result.bubbles), cache_hits=result.cache_hits, error=result.error)
 
         arr = np.asarray(image.convert("RGB"))
         if screen:
@@ -152,7 +236,9 @@ class Pipeline:
         result.line_count = len(lines)
         t2 = time.perf_counter()
         result.timings["bubbles"] = t2 - t1
+        watch.mark("облака")
         if not translate:
+            result.debug = debug()
             return result
 
         # Кэш: то, что уже переводили, не отправляем повторно
@@ -179,7 +265,50 @@ class Pipeline:
                 result.error = str(e)
             self._persist_title()
         result.timings["translate"] = time.perf_counter() - t2
+        watch.mark("перевод")
+        result.debug = debug()
         return result
+
+    # ------------------------------------------------------------ сравнение
+    def compare(self, image: Image.Image) -> str:
+        """Распознать картинку по очереди и параллельно, сравнить время и результат."""
+        cfg = self.cfg
+        lang = cfg["source_lang"]
+        mode = cfg.get("ocr_mode", "thorough")
+        try:
+            self.recognize(image, lang, "fast", False)  # прогрев: загрузка распознавателя не попадёт в замер
+        except OcrError:
+            pass
+
+        def run(parallel: bool):
+            t = time.perf_counter()
+            try:
+                lines, _, _, threads = self.recognize(image, lang, mode, parallel)
+            except OcrError:
+                lines, threads = [], 1
+            return (time.perf_counter() - t) * 1000, lines, threads
+
+        seq_ms, seq, _ = run(False)
+        par_ms, par, threads = run(True)
+
+        def keys(ls):
+            return sorted(f"{l.text}|{int(l.box.x // 4)}|{int(l.box.y // 4)}|{int(l.box.w // 4)}|{int(l.box.h // 4)}"
+                          for l in ls)
+
+        a, b = keys(seq), keys(par)
+        out = ["Сравнение распознавания", f"По очереди: {seq_ms:.0f} мс"]
+        if threads > 1:
+            out.append(f"Параллельно (×{threads}): {par_ms:.0f} мс")
+            k = seq_ms / par_ms if par_ms else 0
+            out.append(f"Быстрее в {k:.1f} раза" if k >= 1 else f"Медленнее в {1 / k:.1f} раза" if k else "")
+        else:
+            out.append("Параллельно: недоступно (один проход, одно ядро или EasyOCR)")
+        if a == b:
+            out.append(f"Результат совпал: {len(a)} строк")
+        else:
+            diff = len(set(a) ^ set(b))
+            out.append(f"Результат различается: {len(a)} и {len(b)} строк, расхождений {diff}")
+        return "\n".join(x for x in out if x)
 
     def _cache_key(self, text: str) -> str:
         c = self.cfg

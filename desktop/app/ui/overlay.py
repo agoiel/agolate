@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import QWidget
 
 from ..capture import Region, exclude_from_capture, find_screen
-from ..models import PageResult
+from ..models import PASS_COLORS, PageResult
 
 _FLAGS = int(Qt.TextFlag.TextWordWrap.value) | int(Qt.AlignmentFlag.AlignCenter.value)
 
@@ -77,6 +77,9 @@ class OverlayWindow(QWidget):
             return
 
         paint_plates(p, self.result.bubbles, self.k, self.rect(), self.cfg)
+        dbg = self.result.debug
+        if self.cfg.get("dev_mode") and dbg is not None:
+            paint_debug(p, dbg, self.k, self.rect(), bool(self.cfg.get("debug_boxes", True)))
         p.end()
 
 
@@ -141,3 +144,32 @@ def paint_plates(p: QPainter, bubbles, k: float, bounds: QRect, cfg) -> None:
         p.setFont(font)
         p.setPen(fg)
         p.drawText(rect.adjusted(3, 2, -3, -2), _FLAGS, b.translation)
+
+
+def paint_debug(p: QPainter, dbg, k: float, bounds: QRect, boxes: bool) -> None:
+    """Режим разработчика: рамки строк каждого прохода (своим цветом) и сводка в углу."""
+    if boxes:
+        order: list[str] = []
+        for ps in dbg.passes:
+            if ps.variant not in order:
+                order.append(ps.variant)
+        for ps in dbg.passes:
+            i = order.index(ps.variant)
+            r, g, b = PASS_COLORS[i % len(PASS_COLORS)]
+            p.setPen(QPen(QColor(r, g, b), 1.5))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            inset = i * 1.5
+            for line in ps.lines:
+                bx = line.box.scaled(1 / k)
+                p.drawRect(QRectF(bx.x - inset, bx.y - inset, bx.w + 2 * inset, bx.h + 2 * inset))
+    text = dbg.summary()
+    f = QFont("Consolas")
+    f.setPixelSize(12)
+    p.setFont(f)
+    tw = QFontMetrics(f).horizontalAdvance(text)
+    pill = QRectF(bounds.right() - tw - 26, bounds.bottom() - 30, tw + 18, 22)
+    path = QPainterPath()
+    path.addRoundedRect(pill, 8, 8)
+    p.fillPath(path, QColor(61, 43, 40, 220))
+    p.setPen(QColor(243, 227, 204))
+    p.drawText(pill, int(Qt.AlignmentFlag.AlignCenter.value), text)

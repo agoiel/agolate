@@ -31,6 +31,7 @@ def _hook(t, v, tb):
 
 sys.excepthook = _hook
 app, cfg = create_app()
+cfg["dev_mode"] = True  # показать и карточку «Для разработчиков» в раскрытом виде
 
 
 def settle():

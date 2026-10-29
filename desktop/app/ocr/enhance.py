@@ -68,18 +68,52 @@ def _to_image(a: np.ndarray) -> Image.Image:
     return Image.fromarray(a.astype(np.uint8), "L").convert("RGB")
 
 
-def variants(img: Image.Image, mode: str) -> list[Image.Image]:
-    """Варианты картинки для распознавания. Первый всегда — оригинал."""
-    out = [img]
+def variant_keys(mode: str) -> list[str]:
+    """Какие варианты картинки распознаются в этом режиме. Первый всегда — оригинал."""
     if mode == "fast":
-        return out
-    out.append(_to_image(255 - _stretch(_gray(img))))
-    lc = _local_contrast(img)
-    out.append(_to_image(lc))
+        return ["orig"]
     if mode == "max":
-        out.append(_to_image(255 - lc))
-        out.append(_to_image(_color_contrast(img)))
-    return out
+        return ["orig", "inv", "local", "local_inv", "color"]
+    return ["orig", "inv", "local"]
+
+
+class Source:
+    """Исходная картинка и общие для вариантов промежуточные данные (считаются один раз).
+
+    Варианты можно готовить из разных потоков: общее считается под замком.
+    """
+
+    def __init__(self, img: Image.Image):
+        import threading
+        self.img = img
+        self._lock = threading.Lock()
+        self._local: np.ndarray | None = None
+
+    def local(self) -> np.ndarray:
+        with self._lock:
+            if self._local is None:
+                self._local = _local_contrast(self.img)
+            return self._local
+
+
+def make(key: str, src: Source) -> Image.Image:
+    """Подготовить вариант картинки."""
+    img = src.img
+    if key == "inv":
+        return _to_image(255 - _stretch(_gray(img)))
+    if key == "local":
+        return _to_image(src.local())
+    if key == "local_inv":
+        return _to_image(255 - src.local())
+    if key == "color":
+        return _to_image(_color_contrast(img))
+    return img
+
+
+def variants(img: Image.Image, mode: str) -> list[Image.Image]:
+    """Все варианты картинки сразу (по очереди)."""
+    src = Source(img)
+    return [make(k, src) for k in variant_keys(mode)]
 
 
 # ---------------------------------------------------------------- объединение результатов
@@ -97,7 +131,7 @@ def _overlap(a: Box, b: Box) -> float:
     return (w * h) / max(1.0, min(a.w * a.h, b.w * b.h))
 
 
-def merge(passes: list[list[TextLine]]) -> list[TextLine]:
+def merge(passes: list[list[TextLine]], stats: dict | None = None) -> list[TextLine]:
     """Объединяет строки из нескольких проходов без дублей.
 
     Первый проход (оригинал) считается самым надёжным. Строка из другого прохода
@@ -115,6 +149,10 @@ def merge(passes: list[list[TextLine]]) -> list[TextLine]:
             hits = [i for i, ex in enumerate(result) if _overlap(ex.box, cand.box) > 0.4]
             if not hits:
                 result.append(cand)
+                if stats is not None:
+                    stats["added"] = stats.get("added", 0) + 1
             elif len(hits) == 1 and n > 1.3 * _letters(result[hits[0]].text):
                 result[hits[0]] = cand
+                if stats is not None:
+                    stats["replaced"] = stats.get("replaced", 0) + 1
     return result

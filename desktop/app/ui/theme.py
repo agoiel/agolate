@@ -200,6 +200,7 @@ _ICONS: dict[str, list[tuple[str, str]]] = {
     "keyboard": [("stroke", "M3,7h18v11H3z"), ("stroke", "M7,11h0.01"), ("stroke", "M11,11h0.01"),
                  ("stroke", "M15,11h0.01"), ("stroke", "M8,15h8")],
     "folder": [("stroke", "M3,7a1,1 0 0,1 1,-1h5l2,2h8a1,1 0 0,1 1,1v9a1,1 0 0,1 -1,1H4a1,1 0 0,1 -1,-1z")],
+    "code": [("stroke", "M8,7l-5,5 5,5"), ("stroke", "M16,7l5,5 -5,5"), ("stroke", "M13.5,4.5l-3,15")],
     "pin": [("stroke", "M9,4h6l-1,6 3,3H7l3,-3z"), ("stroke", "M12,13v7")],
 }
 

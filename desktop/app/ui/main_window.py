@@ -9,15 +9,16 @@ from __future__ import annotations
 import html
 import sys
 import threading
+import time
 import traceback
 
 import numpy as np
 from PIL import Image
 from PySide6.QtCore import QObject, QRect, QRunnable, QSize, Qt, QThreadPool, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QDesktopServices, QFont, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
-                               QInputDialog, QLabel, QMenu, QMessageBox, QScrollArea, QTextBrowser,
-                               QSizePolicy, QVBoxLayout, QWidget)
+                               QInputDialog, QLabel, QMenu, QMessageBox, QPlainTextEdit, QScrollArea,
+                               QSizePolicy, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__, languages, titles
 from ..capture import Region, grab_region
@@ -56,17 +57,53 @@ class _Signals(QObject):
 
 
 class _Job(QRunnable):
-    def __init__(self, pipeline: Pipeline, image: Image.Image, k: float, token):
+    def __init__(self, pipeline: Pipeline, image: Image.Image, k: float, token, live: bool = False):
         super().__init__()
-        self.pipeline, self.image, self.k, self.token = pipeline, image, k, token
+        self.pipeline, self.image, self.k, self.token, self.live = pipeline, image, k, token, live
         self.signals = _Signals()
 
     def run(self):
         try:
-            res = self.pipeline.process(self.image)
+            res = self.pipeline.process(self.image, live=self.live)
             self.signals.done.emit(res, self.k, self.token)
         except Exception:  # noqa: BLE001
             self.signals.failed.emit(traceback.format_exc())
+
+
+class _CompareSignals(QObject):
+    done = Signal(str)
+
+
+class _CompareJob(QRunnable):
+    """Распознать зону по очереди и параллельно — для режима разработчика."""
+
+    def __init__(self, pipeline: Pipeline, image: Image.Image):
+        super().__init__()
+        self.pipeline, self.image = pipeline, image
+        self.signals = _CompareSignals()
+
+    def run(self):
+        try:
+            text = self.pipeline.compare(self.image)
+        except Exception:  # noqa: BLE001
+            text = "Ошибка сравнения:\n" + traceback.format_exc()
+        self.signals.done.emit(text)
+
+
+DEV_LOG = ROOT / "dev_log.txt"
+
+
+def dev_log(text: str) -> None:
+    """Дописать запись в журнал режима разработчика (хранятся последние ~60 КБ)."""
+    try:
+        old = DEV_LOG.read_text(encoding="utf-8") if DEV_LOG.exists() else ""
+        stamp = time.strftime("%d.%m %H:%M:%S")
+        all_ = f"{old}── {stamp}\n{text}\n\n"
+        if len(all_) > 60_000:
+            all_ = "── " + all_[-60_000:].split("── ", 1)[-1]
+        DEV_LOG.write_text(all_, encoding="utf-8")
+    except OSError:
+        pass
 
 
 class _HotkeyBridge(QObject):
@@ -185,7 +222,7 @@ class MainWindow(QWidget):
         bl.setSpacing(14)
         bl.addWidget(self._build_tiles())
         self.columns = Columns([self._build_languages(), self._build_translator(), self._build_title(),
-                                self._build_tuning(), self._build_hotkeys()])
+                                self._build_tuning(), self._build_hotkeys(), self._build_developer()])
         bl.addWidget(self.columns)
         foot = caption(f"agolate {__version__} · распознавание: "
                        f"{'Windows OCR' if self.cfg['ocr_engine'] == 'windows' else 'EasyOCR'}")
@@ -643,6 +680,119 @@ class MainWindow(QWidget):
         card.add(caption("Формат: <alt>+q, <ctrl>+<shift>+t, <f8>. Пустое поле — клавиша отключена."))
         return card
 
+    # ---------------------------------------------------------------- для разработчиков
+    def _build_developer(self) -> Card:
+        c = self.cfg
+        card = Card("Для разработчиков", "Отладочная информация и проверка скорости", "code",
+                    collapsible=True, collapsed=True)
+        dev = SwitchRow("Режим разработчика", "Время каждого этапа, проходы распознавания, рамки строк и журнал",
+                        bool(c.get("dev_mode")))
+        card.add(dev)
+        par = SwitchRow("Параллельное распознавание",
+                        "Проходы распознавания идут одновременно — быстрее на многоядерных процессорах",
+                        bool(c.get("parallel_ocr", True)))
+        par.toggled.connect(lambda v: self._set("parallel_ocr", v))
+        card.add(par)
+
+        extra = QWidget()
+        el = QVBoxLayout(extra)
+        el.setContentsMargins(0, 0, 0, 0)
+        el.setSpacing(10)
+        boxes = SwitchRow("Рамки распознанных строк", "Поверх страницы, своим цветом для каждого прохода",
+                          bool(c.get("debug_boxes", True)))
+        boxes.toggled.connect(lambda v: self._set("debug_boxes", v))
+        el.addWidget(boxes)
+        el.addWidget(label("ПОСЛЕДНИЙ ЗАПУСК", "fieldLabel"))
+        self.dev_report = QPlainTextEdit()
+        self.dev_report.setReadOnly(True)
+        self.dev_report.setPlaceholderText("Здесь появятся подробности после перевода.")
+        mono = QFont("Consolas")
+        mono.setStyleHint(QFont.StyleHint.Monospace)
+        mono.setPointSize(9)
+        self.dev_report.setFont(mono)
+        self.dev_report.setMinimumHeight(150)
+        self.dev_report.setMaximumHeight(220)
+        el.addWidget(self.dev_report)
+        buttons = QWidget()
+        buttons.setObjectName("transparent")
+        fl = FlowLayout(8)
+        buttons.setLayout(fl)
+        cmp_btn = pill("Сравнить на текущей зоне", "outline", "bolt",
+                       "Распознать зону по очереди и параллельно: что быстрее и совпал ли результат")
+        cmp_btn.clicked.connect(self.compare_now)
+        fl.addWidget(cmp_btn)
+        copy_btn = pill("Копировать журнал", "tonal", "link")
+        copy_btn.clicked.connect(self._copy_dev_log)
+        fl.addWidget(copy_btn)
+        open_btn = pill("Открыть журнал", "tonal", "folder")
+        open_btn.clicked.connect(lambda: DEV_LOG.exists() and QDesktopServices.openUrl(QUrl.fromLocalFile(str(DEV_LOG))))
+        fl.addWidget(open_btn)
+        clear_btn = pill("Очистить", "tonal", "refresh")
+        clear_btn.clicked.connect(self._clear_dev_log)
+        fl.addWidget(clear_btn)
+        el.addWidget(buttons)
+        extra.setVisible(bool(c.get("dev_mode")))
+        card.add(extra)
+
+        def toggle_dev(v: bool) -> None:
+            self._set("dev_mode", v)
+            extra.setVisible(v)
+            relayout(extra)
+            self.overlay.update()
+
+        dev.toggled.connect(toggle_dev)
+        return card
+
+    def _copy_dev_log(self) -> None:
+        text = DEV_LOG.read_text(encoding="utf-8") if DEV_LOG.exists() else ""
+        if not text.strip():
+            self._set_status("Журнал пуст: включите режим разработчика и выполните перевод.")
+            return
+        QApplication.clipboard().setText(text)
+        self._set_status("Журнал скопирован.")
+
+    def _clear_dev_log(self) -> None:
+        try:
+            DEV_LOG.unlink()
+        except OSError:
+            pass
+        self._set_status("Журнал очищен.")
+
+    def _show_dev(self, text: str) -> None:
+        if getattr(self, "dev_report", None) is not None:
+            self.dev_report.setPlainText(text)
+        dev_log(text)
+
+    def compare_now(self) -> None:
+        if self.region is None:
+            self._set_status("Область ещё не выделена.", True)
+            return
+        if self.busy:
+            return
+        self.busy = True
+        self._set_status("Сравниваю… это займёт несколько секунд")
+        hidden = self.overlay.isVisible() and not self.overlay.excluded
+        if hidden:
+            self.overlay.hide()
+
+        def go():
+            image, _k = grab_region(self.region)
+            if hidden and not self.overlay.user_hidden:
+                self.overlay.show()
+            job = _CompareJob(self.pipeline, image)
+            job.signals.done.connect(self._on_compared)
+            self._jobs.add(job)
+            job.setAutoDelete(False)
+            self.pool.start(job)
+
+        QTimer.singleShot(120 if hidden else 0, go)
+
+    def _on_compared(self, text: str) -> None:
+        self.busy = False
+        self._jobs.clear()
+        self._show_dev(text)
+        self._set_status(text.split("\n")[-1])
+
     # ================================================================ изменение настроек
     def _save_and_reload(self) -> None:
         self.cfg.save()
@@ -858,11 +1008,11 @@ class MainWindow(QWidget):
             self.overlay.show()
         self._run(image, k)
 
-    def _run(self, image: Image.Image, k: float, token=None) -> None:
+    def _run(self, image: Image.Image, k: float, token=None, live: bool = False) -> None:
         self.busy = True
         self._token += 1
         self._set_status("Распознаю и перевожу…")
-        job = _Job(self.pipeline, image, k, token if token is not None else self._token)
+        job = _Job(self.pipeline, image, k, token if token is not None else self._token, live)
         job.signals.done.connect(self._on_done)
         job.signals.failed.connect(self._on_failed)
         self._jobs.add(job)
@@ -900,6 +1050,8 @@ class MainWindow(QWidget):
         (ROOT / "error.log").write_text(tb, encoding="utf-8")
 
     def _report(self, result: PageResult) -> None:
+        if self.cfg.get("dev_mode") and result.debug is not None:
+            self._show_dev(result.debug.report())
         if result.missing_ocr_lang:
             self._set_status(result.error.split("\n")[0], True)
             self.offer_ocr_install(result.missing_ocr_lang, force=True)
@@ -910,13 +1062,10 @@ class MainWindow(QWidget):
             self._set_status(result.error.split("\n")[0], True)
             return
         n = sum(1 for b in result.bubbles if b.translation)
-        t = result.timings
-        parts = [f"Строк: {result.line_count} · облаков: {n}"]
-        if result.cache_hits:
-            parts.append(f"из кэша: {result.cache_hits}")
-        parts.append(f"OCR {t.get('ocr', 0):.2f} с")
-        if "translate" in t:
-            parts.append(f"перевод {t['translate']:.2f} с")
+        parts = [f"Переведено облаков: {n}"]
+        # технические подробности — только в режиме разработчика
+        if self.cfg.get("dev_mode") and result.debug is not None:
+            parts.append(result.debug.summary())
         if not result.bubbles:
             parts = ["Текст не найден. Попробуйте режим распознавания «Тщательный» или «Максимальный»."]
         self._set_status(" · ".join(parts))
@@ -961,7 +1110,7 @@ class MainWindow(QWidget):
             return
         if self._dirty:
             self._dirty = False
-            self._run(image, k)
+            self._run(image, k, live=True)
 
     # ================================================================ картинка из файла
     def translate_file(self) -> None:

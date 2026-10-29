@@ -19,6 +19,8 @@ class OcrLanguageMissing(OcrError):
 
 class OcrBackend:
     name = "base"
+    # можно ли распознавать несколько картинок одновременно из разных потоков
+    supports_parallel = False
 
     def __init__(self, cfg):
         self.cfg = cfg
