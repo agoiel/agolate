@@ -58,7 +58,7 @@ object I18n {
         "Удалить глоссарий?" to "Delete glossary?",
         "Записи этого тайтла будут удалены без возможности восстановления." to "This title’s entries will be deleted permanently.",
         "Отмена" to "Cancel",
-        "agolate 0.1 · распознавание: Google ML Kit" to "agolate 0.1 · recognition: Google ML Kit",
+        "agolate 0.5 · распознавание: Google ML Kit" to "agolate 0.5 · recognition: Google ML Kit",
         "Перевод манхвы прямо с экрана" to "Translate manhwa right on your screen",
         "Скриншот" to "Screenshot",
         "Режим сменится при следующем запуске. Или переключите его в меню кнопки (долгое нажатие)." to "The mode changes on the next start. Or switch it in the button menu (long press).",

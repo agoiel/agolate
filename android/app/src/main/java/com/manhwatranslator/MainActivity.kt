@@ -89,7 +89,7 @@ class MainActivity : Activity() {
         content.addView(buildGlossary(), lp().margins(this, top = 14))
         content.addView(buildTuning(), lp().margins(this, top = 14))
         content.addView(buildDeveloper(), lp().margins(this, top = 14))
-        content.addView(ui.caption(tr("agolate 0.1 · распознавание: Google ML Kit")).apply {
+        content.addView(ui.caption(tr("agolate 0.5 · распознавание: Google ML Kit")).apply {
             gravity = Gravity.CENTER
             alpha = 0.8f
         }, lp().margins(this, top = 22))
