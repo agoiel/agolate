@@ -50,6 +50,7 @@ from PySide6.QtCore import QPoint, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 
 from app.ui.widgets import Clickable  # noqa: E402
+from PySide6.QtWidgets import QLabel  # noqa: E402
 
 
 LOG = []
@@ -145,6 +146,42 @@ log(f"chosen: {translator.current} list visible after choose: {translator.area.i
 report("chosen", translator)
 squeezed("after choosing DeepL")
 win.grab().save(str(out / "click_translator_chosen.png"))
+
+# --- компактный список (язык перевода): раскрывается вниз на несколько строк, дальше прокрутка
+from app.ui.widgets import Select, Toggle  # noqa: E402
+tgt = win.tgt_combo
+src = win.src_combo
+show(tgt)
+src_y = src.mapTo(win, QPoint(0, 0)).y()
+record("anim_select_open", lambda: click(tgt.header))
+log(f"select open: area h={tgt.area.height()} rows={len(tgt._rows)} "
+    f"scroll max={tgt.area.verticalScrollBar().maximum()} src moved={src.mapTo(win, QPoint(0, 0)).y() - src_y}")
+squeezed("select open")
+win.grab().save(str(out / "click_select_open.png"))
+before = tgt.currentIndex()
+row = tgt._rows[3]
+tgt.area.ensureWidgetVisible(row)
+settle()
+click(row)
+QTest.qWait(350)
+settle()
+log(f"select chose: index {before} -> {tgt.currentIndex()} '{tgt.currentText()}' open={tgt.area.isVisible()}")
+squeezed("select closed")
+
+# --- переключатели не должны сдвигаться при нажатии
+bad_moves = []
+for sw in [w for w in win.findChildren(Toggle) if w.isVisible()][:4]:
+    x0 = sw.mapTo(win, QPoint(0, 0))
+    show(sw)
+    x0 = sw.mapTo(win, QPoint(0, 0))
+    click(sw)
+    QTest.qWait(250)
+    x1 = sw.mapTo(win, QPoint(0, 0))
+    if x0 != x1:
+        bad_moves.append(f"{x0.x()},{x0.y()}->{x1.x()},{x1.y()}")
+    click(sw)
+    QTest.qWait(250)
+log(f"toggles moved: {len(bad_moves)} {' '.join(bad_moves)}")
 cards = [c for c in win.findChildren(Card) if hasattr(c, "chevron")]
 collapse_heads = [w for w in cards[0].findChildren(Clickable) if w.objectName() == "collapseHeader"]
 show(cards[0])
@@ -158,6 +195,31 @@ for c in cards[1:]:
     click(hd)
     QTest.qWait(400)
 squeezed("all cards open")
+# список в «Тонкой настройке» (движок OCR) внутри раскрытой карточки
+eng = [s for s in win.findChildren(Select) if s.findData("easyocr") >= 0][0]
+show(eng)
+click(eng.header)
+QTest.qWait(400)
+settle()
+show(eng)
+log(f"engine select open: area h={eng.area.height()} visible={eng.area.isVisible()}")
+squeezed("engine select open")
+win.grab().save(str(out / "click_engine_select.png"))
+click(eng.header)
+QTest.qWait(400)
+settle()
+# переключатели в раскрытых карточках
+bad_moves = []
+for sw in [w for w in win.findChildren(Toggle) if w.isVisible()]:
+    show(sw)
+    x0 = sw.mapTo(win, QPoint(0, 0))
+    click(sw)
+    QTest.qWait(250)
+    if sw.mapTo(win, QPoint(0, 0)) != x0:
+        bad_moves.append(sw.parentWidget().findChildren(QLabel)[0].text()[:20] if sw.parentWidget() else "?")
+    click(sw)
+    QTest.qWait(250)
+log(f"toggles in open cards moved: {len(bad_moves)} {bad_moves}")
 record("anim_tuning_close", lambda: click(collapse_heads[0]))
 squeezed("tuning closed")
 win.resize(420, 760)

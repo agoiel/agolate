@@ -148,8 +148,11 @@ def natural_height(w: QWidget, width: int) -> int:
     if lay is None:
         return w.sizeHint().height()
     lay.activate()
-    h = lay.totalHeightForWidth(width) if lay.hasHeightForWidth() else -1
-    return max(h, lay.totalSizeHint().height())
+    if lay.hasHeightForWidth():
+        h = lay.totalHeightForWidth(width)
+        if h > 0:
+            return h
+    return lay.totalSizeHint().height()
 
 
 class Clip(QWidget):
@@ -591,6 +594,202 @@ class Dropdown(QFrame):
         self.chev.setPixmap(pm)
 
 
+class _SelectItem(QFrame):
+    clicked = Signal()
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.setObjectName("selectItem")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 7, 8, 7)
+        self.label = ElideLabel(text)
+        lay.addWidget(self.label, 1)
+        self.check = QLabel()
+        self.check.setFixedSize(18, 18)
+        lay.addWidget(self.check)
+
+    def set_checked(self, on: bool) -> None:
+        self.setProperty("checked", "true" if on else "false")
+        self.check.setPixmap(theme.pixmap("check", theme.palette().primary, 16) if on else QPixmap())
+        _repolish(self)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            e.accept()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
+            self.clicked.emit()
+
+
+class Select(QFrame):
+    """Компактный выпадающий список (замена QComboBox).
+
+    По нажатию список плавно раскрывается вниз прямо в карточке — на несколько строк,
+    дальше он прокручивается. Умеет то же, что нужно от QComboBox: addItem, clear,
+    findData, currentData, setCurrentIndex, setItemText и сигнал currentIndexChanged.
+    """
+
+    currentIndexChanged = Signal(int)  # noqa: N815
+    VISIBLE_ROWS = 6
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("select")
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._items: list[tuple[str, object]] = []
+        self._rows: list[_SelectItem] = []
+        self._index = -1
+        self._open = False
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(1, 1, 1, 1)
+        lay.setSpacing(0)
+
+        self.header = Clickable("selectHeader")
+        hl = QHBoxLayout(self.header)
+        hl.setContentsMargins(12, 8, 8, 8)
+        hl.setSpacing(6)
+        self.text = ElideLabel("")
+        hl.addWidget(self.text, 1)
+        self.chev = QLabel()
+        self.chev.setFixedSize(18, 18)
+        hl.addWidget(self.chev)
+        self.header.clicked.connect(self.toggle)
+        lay.addWidget(self.header)
+
+        self.list = QWidget()
+        self.list.setObjectName("dropListContent")
+        self.list_lay = QVBoxLayout(self.list)
+        self.list_lay.setContentsMargins(4, 2, 4, 4)
+        self.list_lay.setSpacing(2)
+        self.list_lay.addStretch(1)
+        self.list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.area = QScrollArea()
+        self.area.setObjectName("dropListArea")
+        self.area.setWidgetResizable(True)
+        self.area.setFrameShape(QFrame.Shape.NoFrame)
+        self.area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.area.setWidget(self.list)
+        self.area.setVisible(False)
+        lay.addWidget(self.area)
+        self._anim = HeightAnimator(self.area, self, 200)
+        self._anim.on_opened = self._show_current
+        self._render_chevron()
+
+    # ------------------------------------------------------------ как у QComboBox
+    def addItem(self, text: str, data=None) -> None:  # noqa: N802
+        self._items.append((text, data))
+        row = _SelectItem(text)
+        i = len(self._rows)
+        row.clicked.connect(lambda i=i: self._choose(i))
+        self._rows.append(row)
+        self.list_lay.insertWidget(self.list_lay.count() - 1, row)
+        if self._index < 0:
+            self._index = 0
+            self._render()
+        else:
+            row.set_checked(False)
+
+    def clear(self) -> None:
+        for row in self._rows:
+            self.list_lay.removeWidget(row)
+            row.hide()
+            row.setParent(None)
+            row.deleteLater()
+        self._rows.clear()
+        self._items.clear()
+        self._index = -1
+        self._render()
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemText(self, i: int) -> str:  # noqa: N802
+        return self._items[i][0] if 0 <= i < len(self._items) else ""
+
+    def itemData(self, i: int):  # noqa: N802
+        return self._items[i][1] if 0 <= i < len(self._items) else None
+
+    def setItemText(self, i: int, text: str) -> None:  # noqa: N802
+        if 0 <= i < len(self._items):
+            self._items[i] = (text, self._items[i][1])
+            self._rows[i].label.setText(text)
+            if i == self._index:
+                self.text.setText(text)
+
+    def findData(self, data) -> int:  # noqa: N802
+        for i, (_t, d) in enumerate(self._items):
+            if d == data:
+                return i
+        return -1
+
+    def currentIndex(self) -> int:  # noqa: N802
+        return self._index
+
+    def currentData(self):  # noqa: N802
+        return self.itemData(self._index)
+
+    def currentText(self) -> str:  # noqa: N802
+        return self.itemText(self._index)
+
+    def setCurrentIndex(self, i: int) -> None:  # noqa: N802
+        if not 0 <= i < len(self._items) or i == self._index:
+            return
+        self._index = i
+        self._render()
+        self.currentIndexChanged.emit(i)
+
+    # ------------------------------------------------------------ раскрытие
+    def toggle(self) -> None:
+        if self._open:
+            self.close_list()
+        elif self._items:
+            self.open_list()
+
+    def open_list(self) -> None:
+        self._open = True
+        rows = self._rows[: self.VISIBLE_ROWS]
+        need = natural_height(self.list, max(self.width() - 10, 120))
+        if len(self._rows) > self.VISIBLE_ROWS:
+            # видно несколько строк, остальное прокручивается
+            row_h = max((r.sizeHint().height() for r in rows), default=34)
+            need = min(need, self.VISIBLE_ROWS * (row_h + 2) + 6 + row_h // 2)
+        self.area.verticalScrollBar().setValue(0)
+        self._anim.open(need, keep_fixed=True)
+        self._render_state()
+
+    def close_list(self) -> None:
+        self._open = False
+        self._anim.close()
+        self._render_state()
+
+    def _show_current(self) -> None:
+        if 0 <= self._index < len(self._rows):
+            self.area.ensureWidgetVisible(self._rows[self._index], 0, 8)
+
+    def _choose(self, i: int) -> None:
+        self.close_list()
+        self.setCurrentIndex(i)
+
+    def _render_state(self) -> None:
+        self.setProperty("open", "true" if self._open else "false")
+        _repolish(self)
+        self._render_chevron()
+
+    def _render(self) -> None:
+        self.text.setText(self.itemText(self._index))
+        for k, row in enumerate(self._rows):
+            row.set_checked(k == self._index)
+
+    def _render_chevron(self) -> None:
+        from PySide6.QtGui import QTransform
+        pm = theme.pixmap("chevron", theme.palette().primary, 18)
+        if self._open:
+            pm = pm.transformed(QTransform().rotate(180))
+        self.chev.setPixmap(pm)
+
+
 # ---------------------------------------------------------------- поле ввода с подписью
 
 class Field(QWidget):
@@ -662,7 +861,8 @@ class Toggle(QAbstractButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(46, 26)
         self._pos = 1.0 if checked else 0.0
-        self._anim = QPropertyAnimation(self, b"pos", self)
+        # свойство анимации — knob (положение ползунка); имя pos занято положением самого виджета
+        self._anim = QPropertyAnimation(self, b"knob", self)
         self._anim.setDuration(140)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.toggled.connect(self._animate)
@@ -680,7 +880,7 @@ class Toggle(QAbstractButton):
         self._pos = v
         self.update()
 
-    pos = Property(float, _get_pos, _set_pos)
+    knob = Property(float, _get_pos, _set_pos)
 
     def paintEvent(self, _):
         c = theme.palette()
@@ -968,19 +1168,36 @@ class Columns(QWidget):
 class ResponsiveRow(QWidget):
     """Два поля в ряд со стрелкой между ними, а в узком месте — друг под другом."""
 
-    def __init__(self, left: QWidget, middle: QWidget, right: QWidget, breakpoint: int = 420):
+    def __init__(self, left: QWidget, middle: QWidget, right: QWidget, breakpoint: int = 420,
+                 anchor: QWidget | None = None):
+        """anchor — к середине какого виджета выравнивать стрелку (например, к полю списка)."""
         super().__init__()
         self.middle = middle
+        self.anchor = anchor
         self.breakpoint = breakpoint
         self.box = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
         self.box.setContentsMargins(0, 0, 0, 0)
         self.box.setSpacing(8)
-        self.box.addWidget(left, 1)
-        self.box.addWidget(middle, 0, Qt.AlignmentFlag.AlignBottom)
-        self.box.addWidget(right, 1)
+        # всё прижато кверху: когда список под полем раскрывается, соседнее поле и стрелка не съезжают
+        self.box.addWidget(left, 1, Qt.AlignmentFlag.AlignTop)
+        self.box.addWidget(middle, 0, Qt.AlignmentFlag.AlignTop)
+        self.box.addWidget(right, 1, Qt.AlignmentFlag.AlignTop)
+
+    def _place_middle(self) -> None:
+        if self.anchor is None or not self.anchor.isVisible():
+            return
+        y = self.anchor.mapTo(self, QPoint(0, 0)).y() + self.anchor.height() // 2 \
+            - max(1, self.middle.sizeHint().height() - self.middle.contentsMargins().top()) // 2
+        if y >= 0 and self.middle.contentsMargins().top() != y:
+            self.middle.setContentsMargins(0, y, 0, 0)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        QTimer.singleShot(0, self._place_middle)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        QTimer.singleShot(0, self._place_middle)
         narrow = e.size().width() < self.breakpoint
         direction = QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
         if self.box.direction() != direction:

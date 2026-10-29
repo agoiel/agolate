@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 from PySide6.QtCore import QObject, QRect, QRunnable, QSize, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QIcon, QImage, QPainter, QPixmap
-from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
                                QInputDialog, QLabel, QMenu, QMessageBox, QPlainTextEdit, QScrollArea,
                                QSizePolicy, QTextBrowser, QVBoxLayout, QWidget)
 
@@ -32,7 +32,7 @@ from .list_window import ListWindow
 from .overlay import OverlayWindow, paint_plates
 from .selector import SelectionWindow
 from .widgets import (Card, Columns, Dropdown, Field, FlowLayout, Hero, ResponsiveRow, Segmented, StatusChip,
-                      ScrollContent, Stepper, SwitchRow, Tile, caption, label, pill, relayout, round_pixmap,
+                      ScrollContent, Select, Stepper, SwitchRow, Tile, caption, label, pill, relayout, round_pixmap,
                       set_pill)
 
 # Описание переводчиков для списка (как в Android-версии)
@@ -317,11 +317,8 @@ class MainWindow(QWidget):
         return _TileGrid(tiles)
 
     # ---------------------------------------------------------------- языки
-    def _combo(self, items: list[tuple[str, str]], current: str, on_change) -> QComboBox:
-        cb = QComboBox()
-        cb.setCursor(Qt.CursorShape.PointingHandCursor)
-        cb.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        cb.setMinimumContentsLength(6)
+    def _combo(self, items: list[tuple[str, str]], current: str, on_change) -> Select:
+        cb = Select()
         for key, title in items:
             cb.addItem(title, key)
         cb.setCurrentIndex(max(0, cb.findData(current)))
@@ -335,6 +332,7 @@ class MainWindow(QWidget):
         lay.setSpacing(4)
         lay.addWidget(label(caption_text.upper(), "fieldLabel"))
         lay.addWidget(w)
+        lay.addStretch(1)
         return box
 
     def _build_languages(self) -> Card:
@@ -345,9 +343,8 @@ class MainWindow(QWidget):
                                      self.cfg["target_lang"], lambda v: self._set("target_lang", v))
         arrow = QLabel()
         arrow.setPixmap(theme.pixmap("arrow", theme.palette().primary, 20))
-        arrow.setContentsMargins(0, 0, 0, 10)
         card.add(ResponsiveRow(self._labeled("С языка", self.src_combo), arrow,
-                               self._labeled("На язык", self.tgt_combo)))
+                               self._labeled("На язык", self.tgt_combo), anchor=self.src_combo.header))
         content = Dropdown("Что переводим", [
             ("manhwa", "Манхва, манга, маньхуа", "Облака с репликами, звуки, плашки", ""),
             ("screen", "Текст на экране", "Статьи, чаты, игры, приложения — перевод прямо поверх текста", ""),
@@ -452,10 +449,7 @@ class MainWindow(QWidget):
     # ---------------------------------------------------------------- тайтл и глоссарий
     def _build_title(self) -> Card:
         card = Card("Тайтл", "Контекст и глоссарий сохраняются для каждой манхвы", "book")
-        self.title_combo = QComboBox()
-        self.title_combo.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.title_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.title_combo.setMinimumContentsLength(10)
+        self.title_combo = Select()
         self.title_combo.currentIndexChanged.connect(self._on_title_combo)
         card.add(self._labeled("Активный тайтл", self.title_combo))
         row = FlowLayout(8)
@@ -469,10 +463,7 @@ class MainWindow(QWidget):
         row.addWidget(new_t)
         card.add(host)
 
-        self.gloss_combo = QComboBox()
-        self.gloss_combo.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.gloss_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.gloss_combo.setMinimumContentsLength(10)
+        self.gloss_combo = Select()
         self.gloss_combo.currentIndexChanged.connect(self._on_gloss_combo)
         card.add(self._labeled("Глоссарий", self.gloss_combo))
         grow = FlowLayout(8)

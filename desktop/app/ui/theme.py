@@ -114,6 +114,14 @@ QComboBox::drop-down {{ border: none; width: 26px; }}
 QComboBox QAbstractItemView {{ background: {c.surface}; border: 1px solid {c.border}; border-radius: 10px;
     padding: 4px; outline: none; selection-background-color: {c.selected}; selection-color: {c.text}; }}
 
+QFrame#select {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 12px; }}
+QFrame#select:hover {{ border-color: {c.primary}; }}
+QFrame#select[open="true"] {{ background: {c.surface}; border: 2px solid {c.primary}; }}
+QFrame#selectHeader {{ background: transparent; border: none; border-radius: 11px; }}
+QFrame#selectItem {{ background: transparent; border: none; border-radius: 8px; }}
+QFrame#selectItem:hover {{ background: {c.hover}; }}
+QFrame#selectItem[checked="true"] {{ background: {c.selected}; }}
+QFrame#selectItem[checked="true"] QLabel {{ font-weight: 600; }}
 QFrame#dropdown {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 14px; }}
 QFrame#dropdown[open="true"] {{ background: {c.surface}; border: 2px solid {c.primary}; }}
 QFrame#dropHeader {{ background: transparent; border: none; border-radius: 12px; }}
